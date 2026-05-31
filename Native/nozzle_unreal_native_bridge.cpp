@@ -2,31 +2,107 @@
 
 namespace nozzle_unreal_native {
 
+namespace {
+
+bool can_use_d3d11(bool selected_rhi_is_d3d11) noexcept {
+    return NOZZLE_UNREAL_NATIVE_TARGET_WIN64 != 0
+        && NOZZLE_UNREAL_NATIVE_D3D11_RUNTIME != 0
+        && selected_rhi_is_d3d11;
+}
+
+bool can_use_metal(bool selected_rhi_is_metal) noexcept {
+    return NOZZLE_UNREAL_NATIVE_TARGET_MACOS != 0
+        && NOZZLE_UNREAL_NATIVE_METAL_RUNTIME != 0
+        && selected_rhi_is_metal;
+}
+
+NozzleErrorCode publish_native_texture(
+    NozzleSender *sender,
+    void *native_texture,
+    std::uint32_t width,
+    std::uint32_t height,
+    NozzleTextureFormat storage_format,
+    NozzleTextureFormat semantic_format
+) noexcept {
+    if(sender == nullptr || native_texture == nullptr || width == 0 || height == 0) {
+        return NOZZLE_ERROR_INVALID_ARGUMENT;
+    }
+
+#if NOZZLE_UNREAL_NATIVE_WITH_NOZZLE_CORE
+    return nozzle_sender_publish_native_texture_ex(
+        sender,
+        native_texture,
+        width,
+        height,
+        storage_format,
+        semantic_format
+    );
+#else
+    return NOZZLE_ERROR_UNSUPPORTED_BACKEND;
+#endif
+}
+
+NozzleErrorCode copy_frame_to_native_texture(
+    NozzleFrame *frame,
+    void *native_texture,
+    std::uint32_t width,
+    std::uint32_t height,
+    NozzleTextureFormat format
+) noexcept {
+    if(frame == nullptr || native_texture == nullptr || width == 0 || height == 0) {
+        return NOZZLE_ERROR_INVALID_ARGUMENT;
+    }
+
+#if NOZZLE_UNREAL_NATIVE_WITH_NOZZLE_CORE
+    return nozzle_frame_copy_to_native_texture(
+        frame,
+        native_texture,
+        width,
+        height,
+        format
+    );
+#else
+    return NOZZLE_ERROR_UNSUPPORTED_BACKEND;
+#endif
+}
+
+} // namespace
+
 const char *supported_backend_name() noexcept {
+#if NOZZLE_UNREAL_NATIVE_D3D11_RUNTIME
     return "D3D11";
+#elif NOZZLE_UNREAL_NATIVE_METAL_RUNTIME
+    return "Metal";
+#else
+    return "unsupported";
+#endif
 }
 
 const char *unsupported_runtime_message() noexcept {
-    return "native bridge is gated to Win64 D3D11 with staged nozzle core; Unreal Engine and UHT smoke remain unverified";
+    return "native bridge is gated to the platform backend compiled by CI: Win64 D3D11, macOS Metal, or explicit unsupported guard; Unreal Engine and UHT smoke remain unverified";
 }
 
-runtime_diagnostics make_runtime_diagnostics(bool selected_rhi_is_d3d11) noexcept {
+runtime_diagnostics make_runtime_diagnostics(bool selected_rhi_is_d3d11, bool selected_rhi_is_metal) noexcept {
     runtime_diagnostics diagnostics;
     diagnostics.with_nozzle_core = NOZZLE_UNREAL_NATIVE_WITH_NOZZLE_CORE != 0;
     diagnostics.target_win64 = NOZZLE_UNREAL_NATIVE_TARGET_WIN64 != 0;
+    diagnostics.target_macos = NOZZLE_UNREAL_NATIVE_TARGET_MACOS != 0;
     diagnostics.d3d11_runtime_enabled = NOZZLE_UNREAL_NATIVE_D3D11_RUNTIME != 0;
+    diagnostics.metal_runtime_enabled = NOZZLE_UNREAL_NATIVE_METAL_RUNTIME != 0;
     diagnostics.selected_rhi_is_d3d11 = selected_rhi_is_d3d11;
-    diagnostics.backend = selected_rhi_is_d3d11 ? supported_backend_name() : "unsupported";
+    diagnostics.selected_rhi_is_metal = selected_rhi_is_metal;
 
-    if(!diagnostics.target_win64 || !diagnostics.d3d11_runtime_enabled) {
+    if(can_use_d3d11(selected_rhi_is_d3d11)) {
+        diagnostics.backend_type = native_backend::d3d11;
+        diagnostics.backend = "D3D11";
+    } else if(can_use_metal(selected_rhi_is_metal)) {
+        diagnostics.backend_type = native_backend::metal;
+        diagnostics.backend = "Metal";
+    } else {
         diagnostics.state = runtime_state::unsupported_rhi;
-        diagnostics.message = "native bridge compile target is not Win64 D3D11";
-        return diagnostics;
-    }
-
-    if(!diagnostics.selected_rhi_is_d3d11) {
-        diagnostics.state = runtime_state::unsupported_rhi;
-        diagnostics.message = "selected Unreal RHI is not D3D11";
+        diagnostics.backend_type = native_backend::unsupported;
+        diagnostics.backend = "unsupported";
+        diagnostics.message = unsupported_runtime_message();
         return diagnostics;
     }
 
@@ -38,15 +114,23 @@ runtime_diagnostics make_runtime_diagnostics(bool selected_rhi_is_d3d11) noexcep
 
     diagnostics.state = runtime_state::ready;
     diagnostics.can_use_runtime = true;
-    diagnostics.message = "Win64 D3D11 guard and nozzle C API path are compile-enabled; this is not Unreal Engine runtime evidence";
+    diagnostics.message = "platform native texture guard and nozzle C API path are compile-enabled; this is not Unreal Engine runtime evidence";
     return diagnostics;
 }
 
-NozzleNativeDevice make_native_device(d3d11_device_view device_view) noexcept {
+NozzleNativeDevice make_d3d11_native_device(d3d11_device_view device_view) noexcept {
     NozzleNativeDevice native_device{};
     native_device.backend = NOZZLE_BACKEND_D3D11;
     native_device.device = device_view.device;
     native_device.context = device_view.context;
+    return native_device;
+}
+
+NozzleNativeDevice make_metal_native_device(metal_device_view device_view) noexcept {
+    NozzleNativeDevice native_device{};
+    native_device.backend = NOZZLE_BACKEND_METAL;
+    native_device.device = device_view.device;
+    native_device.context = nullptr;
     return native_device;
 }
 
@@ -80,7 +164,7 @@ NozzleErrorCode create_d3d11_sender(
     }
     *out_sender = nullptr;
 
-    const runtime_diagnostics diagnostics = make_runtime_diagnostics(selected_rhi_is_d3d11);
+    const runtime_diagnostics diagnostics = make_runtime_diagnostics(selected_rhi_is_d3d11, false);
     if(!diagnostics.can_use_runtime) {
         return NOZZLE_ERROR_UNSUPPORTED_BACKEND;
     }
@@ -90,7 +174,35 @@ NozzleErrorCode create_d3d11_sender(
     }
 
 #if NOZZLE_UNREAL_NATIVE_WITH_NOZZLE_CORE
-    const NozzleNativeDevice native_device = make_native_device(device_view);
+    const NozzleNativeDevice native_device = make_d3d11_native_device(device_view);
+    return nozzle_sender_create_with_native_device(sender_desc, &native_device, out_sender);
+#else
+    return NOZZLE_ERROR_UNSUPPORTED_BACKEND;
+#endif
+}
+
+NozzleErrorCode create_metal_sender(
+    const NozzleSenderDesc *sender_desc,
+    metal_device_view device_view,
+    bool selected_rhi_is_metal,
+    NozzleSender **out_sender
+) noexcept {
+    if(out_sender == nullptr) {
+        return NOZZLE_ERROR_INVALID_ARGUMENT;
+    }
+    *out_sender = nullptr;
+
+    const runtime_diagnostics diagnostics = make_runtime_diagnostics(false, selected_rhi_is_metal);
+    if(!diagnostics.can_use_runtime) {
+        return NOZZLE_ERROR_UNSUPPORTED_BACKEND;
+    }
+
+    if(sender_desc == nullptr || sender_desc->name == nullptr || device_view.device == nullptr) {
+        return NOZZLE_ERROR_INVALID_ARGUMENT;
+    }
+
+#if NOZZLE_UNREAL_NATIVE_WITH_NOZZLE_CORE
+    const NozzleNativeDevice native_device = make_metal_native_device(device_view);
     return nozzle_sender_create_with_native_device(sender_desc, &native_device, out_sender);
 #else
     return NOZZLE_ERROR_UNSUPPORTED_BACKEND;
@@ -102,12 +214,21 @@ NozzleErrorCode create_receiver(
     bool selected_rhi_is_d3d11,
     NozzleReceiver **out_receiver
 ) noexcept {
+    return create_receiver_for_backend(receiver_desc, selected_rhi_is_d3d11, false, out_receiver);
+}
+
+NozzleErrorCode create_receiver_for_backend(
+    const NozzleReceiverDesc *receiver_desc,
+    bool selected_rhi_is_d3d11,
+    bool selected_rhi_is_metal,
+    NozzleReceiver **out_receiver
+) noexcept {
     if(out_receiver == nullptr) {
         return NOZZLE_ERROR_INVALID_ARGUMENT;
     }
     *out_receiver = nullptr;
 
-    const runtime_diagnostics diagnostics = make_runtime_diagnostics(selected_rhi_is_d3d11);
+    const runtime_diagnostics diagnostics = make_runtime_diagnostics(selected_rhi_is_d3d11, selected_rhi_is_metal);
     if(!diagnostics.can_use_runtime) {
         return NOZZLE_ERROR_UNSUPPORTED_BACKEND;
     }
@@ -124,12 +245,7 @@ NozzleErrorCode create_receiver(
 }
 
 NozzleErrorCode publish_d3d11_texture(NozzleSender *sender, d3d11_texture_view texture_view) noexcept {
-    if(sender == nullptr || texture_view.native_texture == nullptr || texture_view.width == 0 || texture_view.height == 0) {
-        return NOZZLE_ERROR_INVALID_ARGUMENT;
-    }
-
-#if NOZZLE_UNREAL_NATIVE_WITH_NOZZLE_CORE
-    return nozzle_sender_publish_native_texture_ex(
+    return publish_native_texture(
         sender,
         texture_view.native_texture,
         texture_view.width,
@@ -137,27 +253,37 @@ NozzleErrorCode publish_d3d11_texture(NozzleSender *sender, d3d11_texture_view t
         texture_view.storage_format,
         texture_view.semantic_format
     );
-#else
-    return NOZZLE_ERROR_UNSUPPORTED_BACKEND;
-#endif
+}
+
+NozzleErrorCode publish_metal_texture(NozzleSender *sender, metal_texture_view texture_view) noexcept {
+    return publish_native_texture(
+        sender,
+        texture_view.native_texture,
+        texture_view.width,
+        texture_view.height,
+        texture_view.storage_format,
+        texture_view.semantic_format
+    );
 }
 
 NozzleErrorCode copy_frame_to_d3d11_texture(NozzleFrame *frame, d3d11_texture_view texture_view) noexcept {
-    if(frame == nullptr || texture_view.native_texture == nullptr || texture_view.width == 0 || texture_view.height == 0) {
-        return NOZZLE_ERROR_INVALID_ARGUMENT;
-    }
-
-#if NOZZLE_UNREAL_NATIVE_WITH_NOZZLE_CORE
-    return nozzle_frame_copy_to_native_texture(
+    return copy_frame_to_native_texture(
         frame,
         texture_view.native_texture,
         texture_view.width,
         texture_view.height,
         texture_view.storage_format
     );
-#else
-    return NOZZLE_ERROR_UNSUPPORTED_BACKEND;
-#endif
+}
+
+NozzleErrorCode copy_frame_to_metal_texture(NozzleFrame *frame, metal_texture_view texture_view) noexcept {
+    return copy_frame_to_native_texture(
+        frame,
+        texture_view.native_texture,
+        texture_view.width,
+        texture_view.height,
+        texture_view.storage_format
+    );
 }
 
 } // namespace nozzle_unreal_native

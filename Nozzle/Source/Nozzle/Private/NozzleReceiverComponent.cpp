@@ -1,7 +1,7 @@
 #include "NozzleReceiverComponent.h"
 
 #include "Engine/TextureRenderTarget2D.h"
-#include "NozzleD3D11Bridge.h"
+#include "NozzleNativeBridge.h"
 #include "NozzleRuntimeModule.h"
 #include "RenderingThread.h"
 #include "TextureResource.h"
@@ -34,7 +34,7 @@ void UNozzleReceiverComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 
 bool UNozzleReceiverComponent::RefreshRuntimeReadiness(const TCHAR* OperationName)
 {
-    LastDiagnostics = FNozzleD3D11Bridge::MakeRuntimeDiagnostics();
+    LastDiagnostics = FNozzleNativeBridge::MakeRuntimeDiagnostics();
     if(!LastDiagnostics.bCanUseRuntime)
     {
         LastDiagnostics.Message = FString::Printf(TEXT("%s blocked: %s"), OperationName, *LastDiagnostics.Message);
@@ -77,7 +77,7 @@ bool UNozzleReceiverComponent::StartReceiver()
 
     bReceiverRunning = true;
     LastDiagnostics.State = ENozzleRuntimeState::Running;
-    LastDiagnostics.Message = TEXT("nozzle receiver created for D3D11 runtime path");
+    LastDiagnostics.Message = TEXT("nozzle receiver created for platform native runtime path");
     return true;
 #else
     LastDiagnostics.State = ENozzleRuntimeState::Unavailable;
@@ -105,7 +105,7 @@ bool UNozzleReceiverComponent::PollFrame()
 {
     if(TargetRenderTarget == nullptr)
     {
-        LastDiagnostics = FNozzleD3D11Bridge::MakeRuntimeDiagnostics();
+        LastDiagnostics = FNozzleNativeBridge::MakeRuntimeDiagnostics();
         LastDiagnostics.State = ENozzleRuntimeState::Error;
         LastDiagnostics.bCanUseRuntime = false;
         LastDiagnostics.Message = TEXT("PollFrame blocked: TargetRenderTarget is null");
@@ -163,9 +163,9 @@ bool UNozzleReceiverComponent::PollFrame()
         {
             FNozzleNativeTextureView NativeView;
             FNozzleRuntimeDiagnostics RenderThreadDiagnostics;
-            if(!FNozzleD3D11Bridge::CaptureNativeTexture_RenderThread(RenderTargetResource, NativeView, RenderThreadDiagnostics))
+            if(!FNozzleNativeBridge::CaptureNativeTexture_RenderThread(RenderTargetResource, NativeView, RenderThreadDiagnostics))
             {
-                UE_LOG(LogNozzle, Warning, TEXT("D3D11 receiver copy skipped: %s"), *RenderThreadDiagnostics.Message);
+                UE_LOG(LogNozzle, Warning, TEXT("platform native receiver copy skipped: %s"), *RenderThreadDiagnostics.Message);
                 nozzle_frame_release(FrameForRenderThread);
                 return;
             }
@@ -188,7 +188,7 @@ bool UNozzleReceiverComponent::PollFrame()
     LastDiagnostics.State = ENozzleRuntimeState::Running;
     LastDiagnostics.Width = static_cast<int32>(FrameInfo.width);
     LastDiagnostics.Height = static_cast<int32>(FrameInfo.height);
-    LastDiagnostics.Message = TEXT("queued D3D11 frame copy to Unreal render target on the render thread; CI remains static until Unreal Engine executes this path");
+    LastDiagnostics.Message = TEXT("queued platform frame copy to Unreal render target on the render thread; CI remains static until Unreal Engine executes this path");
     return true;
 #else
     LastDiagnostics.State = ENozzleRuntimeState::Unavailable;

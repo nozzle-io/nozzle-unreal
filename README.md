@@ -2,7 +2,7 @@
 
 Phase 0 scaffold for a future Unreal Engine plugin for [nozzle](https://github.com/nozzle-io/nozzle) GPU texture sharing.
 
-This repository is intentionally conservative: it does **not** claim Unreal runtime support, Unreal build coverage, native nozzle linking, or a working texture path. CI now includes an Unreal-independent CMake compile check for the native D3D11/nozzle bridge seam, but that still is not Unreal Engine, UHT, linking, or runtime evidence.
+This repository is intentionally conservative: it does **not** claim Unreal runtime support, Unreal build coverage, native nozzle linking, or a working texture path. CI now includes Unreal-independent CMake compile checks on the actual GitHub runner platforms: Windows for the D3D11 seam, macOS for the Metal seam, and Linux for the explicit unsupported guard. That still is not Unreal Engine, UHT, native linking, or runtime evidence.
 
 ## Current support status
 
@@ -12,11 +12,12 @@ This repository is intentionally conservative: it does **not** claim Unreal runt
 | Runtime module skeleton | Present |
 | Editor module skeleton | Present |
 | nozzle native dependency staging | Placeholder only |
-| Unreal-independent native bridge | CMake object compile check against `deps/nozzle/include`; no Unreal headers, no native link, no runtime execution |
+| Unreal-independent native bridge | CMake object compile checks against `deps/nozzle/include`; Windows builds the D3D11 seam, macOS builds the Metal seam, Linux builds the unsupported guard; no Unreal headers, no native link, no runtime execution |
 | Unreal Engine compile | Not proven; CI remains static unless an engine is present |
-| Runtime sender/receiver | Static D3D11-only API skeleton plus native bridge seam; not engine-compiled |
+| Runtime sender/receiver | Static Win64 D3D11 and macOS Metal source-level API skeleton plus native bridge seams; not engine-compiled |
 | First intended RHI proof | Win64 + D3D11 |
-| D3D12/macOS/Linux support | Not claimed |
+| Next source-level RHI path | macOS + Metal |
+| D3D12/Linux support | Not claimed |
 
 A green static CI run means only that files are shaped correctly. It is not engine-build or runtime evidence.
 
@@ -50,31 +51,33 @@ The first implementation target is deliberately narrow:
 - BGRA8 first, before any RGBA8, origin, or channel-order claim.
 - Editor PIE and packaged Development build evidence tracked separately.
 
+The macOS source path is now allowed to advance in parallel as a Metal-only seam, but it is not a runtime support claim until Unreal Engine compilation, `FRHITexture::GetNativeResource()` behavior, IOSurface backing, synchronization, and live smoke are proven.
+
 Do not broaden this list from optimism. Unreal's RHI abstraction does not make texture sharing portable by default.
 
 ## Runtime API skeleton boundary
 
 The runtime module now exposes the first real API surface:
 
-- `UNozzleSenderComponent` for publishing a `UTextureRenderTarget2D` through a D3D11 native texture path.
+- `UNozzleSenderComponent` for publishing a `UTextureRenderTarget2D` through a native texture path.
 - `UNozzleReceiverComponent` for copying an acquired nozzle frame into a `UTextureRenderTarget2D`.
 - `UNozzleRuntimeBlueprintLibrary` for RHI/core diagnostics and sender discovery.
 - `FNozzleRuntimeDiagnostics` for Blueprint-visible state, selected RHI, backend, dimensions, transfer-mode notes, and failure messages.
 
-This is deliberately guarded. Runtime calls are blocked unless all of these are true: Win64 target, selected Unreal RHI name contains `D3D11`, and `WITH_NOZZLE_CORE=1`. D3D12, macOS, and Linux are not supported by this runtime path.
+This is deliberately guarded. Runtime calls are blocked unless one of these source-level platform/RHI gates is true and `WITH_NOZZLE_CORE=1`: Win64 + selected Unreal RHI name contains `D3D11`, or macOS + selected Unreal RHI name contains `Metal`. D3D12 and Linux are not supported by this runtime path.
 
-The code references Unreal RHI APIs (`GDynamicRHI`, `FTextureRenderTargetResource`, `FRHITexture::GetNativeResource`) but static CI does not compile or execute them because no Unreal Engine install is available in repository CI. Treat the skeleton as source-level implementation progress, not runtime evidence. The current sender creation path is intentionally conservative and still needs an engine-backed D3D11 device/context proof before support can be claimed.
+The code references Unreal RHI APIs (`GDynamicRHI`, `FTextureRenderTargetResource`, `FRHITexture::GetNativeResource`) but static CI does not compile or execute them because no Unreal Engine install is available in repository CI. Treat the skeleton as source-level implementation progress, not runtime evidence. The current sender creation path is intentionally conservative and still needs engine-backed D3D11 device/context proof on Windows and Metal texture/IOSurface proof on macOS before support can be claimed.
 
 
 ## Unreal-independent native bridge boundary
 
-`Native/nozzle_unreal_native_bridge.*` is a deliberately small C++ layer with no Unreal headers. It accepts D3D11 device/context/texture pointers as opaque `void*` values, builds nozzle C descriptors, and compiles the guarded calls to:
+`Native/nozzle_unreal_native_bridge.*` is a deliberately small C++ layer with no Unreal headers. It accepts D3D11 device/context pointers, Metal device pointers, and native texture pointers as opaque `void*` values, builds nozzle C descriptors, and compiles the guarded calls to:
 
 - `nozzle_sender_create_with_native_device`
 - `nozzle_sender_publish_native_texture_ex`
 - `nozzle_frame_copy_to_native_texture`
 
-The root `CMakeLists.txt` builds this as object-only compile targets so GitHub CI can validate the native API path and the disabled-core guard without Unreal Engine or a staged `nozzle.dll`. This is stronger than package-only CI, but it still does not prove Unreal RHI extraction, D3D11 synchronization, native nozzle linking, UHT reflection, Editor PIE, or packaged runtime behavior.
+The root `CMakeLists.txt` builds this as object-only compile targets so GitHub CI can validate the native API path and the disabled-core guard without Unreal Engine or staged nozzle binaries. Windows CI validates the D3D11 seam on a Windows runner; macOS CI validates the Metal seam on a macOS runner; Linux CI validates the unsupported guard. This is stronger than package-only CI, but it still does not prove Unreal RHI extraction, D3D11 synchronization, Metal IOSurface backing, native nozzle linking, UHT reflection, Editor PIE, or packaged runtime behavior.
 
 ## Native nozzle staging contract
 
@@ -84,13 +87,14 @@ The root `CMakeLists.txt` builds this as object-only compile targets so GitHub C
 Nozzle/ThirdParty/nozzle/include/nozzle/nozzle_c.h
 Nozzle/ThirdParty/nozzle/lib/Win64/nozzle.lib
 Nozzle/ThirdParty/nozzle/bin/Win64/nozzle.dll
+Nozzle/ThirdParty/nozzle/lib/Mac/libnozzle.dylib
 ```
 
 Until those files are produced by a real build/package process, the module remains a placeholder and must not be used as linking evidence.
 
 ## Validation commands
 
-Static shape check, including runtime-source validation for the D3D11 guard, unsupported-RHI diagnostics, component classes, native bridge files, `WITH_NOZZLE_CORE` behavior, and absence of false D3D12/macOS/Linux support claims:
+Static shape check, including runtime-source validation for the D3D11 guard, unsupported-RHI diagnostics, component classes, native bridge files, `WITH_NOZZLE_CORE` behavior, and absence of false D3D12/Linux support claims and false macOS runtime-support claims:
 
 ```bash
 python3 scripts/check_package_shape.py
@@ -99,9 +103,9 @@ python3 scripts/check_package_shape.py
 Unreal-independent native bridge compile check:
 
 ```bash
-cmake -S . -B build/native-ci -DNOZZLE_UNREAL_NATIVE_FORCE_WIN64_D3D11=ON -DNOZZLE_UNREAL_NATIVE_WITH_NOZZLE_CORE=ON
+cmake -S . -B build/native-ci -DNOZZLE_UNREAL_NATIVE_WITH_NOZZLE_CORE=ON
 cmake --build build/native-ci --target nozzle_unreal_native_bridge nozzle_unreal_native_bridge_compile_check
-cmake -S . -B build/native-ci-disabled -DNOZZLE_UNREAL_NATIVE_FORCE_WIN64_D3D11=ON -DNOZZLE_UNREAL_NATIVE_WITH_NOZZLE_CORE=OFF
+cmake -S . -B build/native-ci-disabled -DNOZZLE_UNREAL_NATIVE_WITH_NOZZLE_CORE=OFF
 cmake --build build/native-ci-disabled --target nozzle_unreal_native_bridge nozzle_unreal_native_bridge_compile_check
 ```
 

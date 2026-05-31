@@ -44,8 +44,8 @@ REQUIRED_FILES = [
     "Nozzle/Source/Nozzle/Public/NozzleReceiverComponent.h",
     "Nozzle/Source/Nozzle/Public/NozzleRuntimeModule.h",
     "Nozzle/Source/Nozzle/Public/NozzleSenderComponent.h",
-    "Nozzle/Source/Nozzle/Private/NozzleD3D11Bridge.h",
-    "Nozzle/Source/Nozzle/Private/NozzleD3D11Bridge.cpp",
+    "Nozzle/Source/Nozzle/Private/NozzleNativeBridge.h",
+    "Nozzle/Source/Nozzle/Private/NozzleNativeBridge.cpp",
     "Nozzle/Source/Nozzle/Private/NozzleReceiverComponent.cpp",
     "Nozzle/Source/Nozzle/Private/NozzleRuntimeBlueprintLibrary.cpp",
     "Nozzle/Source/Nozzle/Private/NozzleRuntimeModule.cpp",
@@ -146,8 +146,8 @@ def check_uplugin() -> None:
             fail(f"module {name} Type must be {module_type}")
         if module.get("LoadingPhase") != "Default":
             fail(f"module {name} LoadingPhase must be Default")
-        if module.get("PlatformAllowList") != ["Win64"]:
-            fail(f"module {name} PlatformAllowList must be exactly ['Win64']")
+        if module.get("PlatformAllowList") != ["Win64", "Mac"]:
+            fail(f"module {name} PlatformAllowList must be exactly ['Win64', 'Mac']")
 
 
 def check_sample_project() -> None:
@@ -165,13 +165,17 @@ def check_build_files() -> None:
     require_text(runtime_build, "\"RHI\"")
     require_text(runtime_build, "\"RenderCore\"")
     require_text(runtime_build, "\"D3D11RHI\"")
+    require_text(runtime_build, "\"MetalRHI\"")
     require_text(runtime_build, "AddEngineThirdPartyPrivateStaticDependencies(Target, \"DX11\")")
     require_text(runtime_build, "NOZZLE_UNREAL_PHASE0_RHI_D3D11=1")
+    require_text(runtime_build, "NOZZLE_UNREAL_PHASE0_RHI_METAL=1")
     require_text(runtime_build, "NOZZLE_UNREAL_D3D11_RUNTIME=1")
+    require_text(runtime_build, "NOZZLE_UNREAL_METAL_RUNTIME=1")
     require_text(third_party_build, "Type = ModuleType.External")
     require_text(third_party_build, "WITH_NOZZLE_CORE=0")
     require_text(third_party_build, "WITH_NOZZLE_CORE=1")
     require_text(third_party_build, "nozzle_c.h")
+    require_text(third_party_build, "libnozzle.dylib")
     require_text(PLUGIN_ROOT / "ThirdParty" / "nozzle" / "README.md", "intentionally empty")
 
 
@@ -182,7 +186,7 @@ def check_runtime_api_skeleton() -> None:
     sender = public_dir / "NozzleSenderComponent.h"
     receiver = public_dir / "NozzleReceiverComponent.h"
     blueprint = public_dir / "NozzleRuntimeBlueprintLibrary.h"
-    bridge = private_dir / "NozzleD3D11Bridge.cpp"
+    bridge = private_dir / "NozzleNativeBridge.cpp"
     sender_impl = private_dir / "NozzleSenderComponent.cpp"
     receiver_impl = private_dir / "NozzleReceiverComponent.cpp"
     blueprint_impl = private_dir / "NozzleRuntimeBlueprintLibrary.cpp"
@@ -190,6 +194,7 @@ def check_runtime_api_skeleton() -> None:
     require_text(diagnostics, "FNozzleRuntimeDiagnostics")
     require_text(diagnostics, "UnsupportedRHI")
     require_text(diagnostics, "bWithNozzleCore")
+    require_text(diagnostics, "bMetalRHI")
     require_text(sender, "UNozzleSenderComponent")
     require_text(sender, "UTextureRenderTarget2D")
     require_text(receiver, "UNozzleReceiverComponent")
@@ -200,8 +205,8 @@ def check_runtime_api_skeleton() -> None:
     require_text(bridge, "GDynamicRHI")
     require_text(bridge, "FRHITexture::GetNativeResource")
     require_text(bridge, "unsupported RHI")
-    require_text(bridge, "Win64 D3D11 only")
-    require_text(bridge, "D3D12, macOS, and Linux are not supported")
+    require_text(bridge, "Win64 D3D11 and macOS Metal")
+    require_text(bridge, "D3D12 and Linux are not supported")
     require_text(bridge, "WITH_NOZZLE_CORE")
 
     require_text(sender_impl, "WITH_NOZZLE_CORE")
@@ -225,28 +230,37 @@ def check_native_bridge() -> None:
 
     require_text(cmake, "project(nozzle_unreal_native_bridge LANGUAGES CXX)")
     require_text(cmake, "add_library(nozzle_unreal_native_bridge OBJECT")
-    require_text(cmake, "NOZZLE_UNREAL_NATIVE_FORCE_WIN64_D3D11")
     require_text(cmake, "NOZZLE_UNREAL_NATIVE_WITH_NOZZLE_CORE")
+    require_text(cmake, "NOZZLE_UNREAL_NATIVE_TARGET_MACOS")
+    require_text(cmake, "NOZZLE_UNREAL_NATIVE_METAL_RUNTIME")
     require_text(cmake, "deps/nozzle/include")
 
     require_text(header, "#include <nozzle/nozzle_c.h>")
     require_text(header, "runtime_diagnostics")
     require_text(header, "d3d11_device_view")
+    require_text(header, "metal_device_view")
     require_text(header, "d3d11_texture_view")
+    require_text(header, "metal_texture_view")
     require_text(header, "create_d3d11_sender")
+    require_text(header, "create_metal_sender")
     require_text(header, "publish_d3d11_texture")
+    require_text(header, "publish_metal_texture")
     require_text(header, "copy_frame_to_d3d11_texture")
+    require_text(header, "copy_frame_to_metal_texture")
 
     require_text(implementation, "nozzle_sender_create_with_native_device")
     require_text(implementation, "nozzle_sender_publish_native_texture_ex")
     require_text(implementation, "nozzle_frame_copy_to_native_texture")
     require_text(implementation, "NOZZLE_UNREAL_NATIVE_TARGET_WIN64")
+    require_text(implementation, "NOZZLE_UNREAL_NATIVE_TARGET_MACOS")
     require_text(implementation, "NOZZLE_UNREAL_NATIVE_D3D11_RUNTIME")
+    require_text(implementation, "NOZZLE_UNREAL_NATIVE_METAL_RUNTIME")
     require_text(implementation, "NOZZLE_UNREAL_NATIVE_WITH_NOZZLE_CORE")
     require_text(implementation, "not Unreal Engine runtime evidence")
 
     require_text(compile_check, "make_runtime_diagnostics")
     require_text(compile_check, "NOZZLE_BACKEND_D3D11")
+    require_text(compile_check, "NOZZLE_BACKEND_METAL")
     require_text(compile_check, "NOZZLE_FORMAT_BGRA8_UNORM")
 
 
@@ -270,7 +284,7 @@ def check_no_false_support_claims() -> None:
                 continue
             if any(word in lowered for word in negative_words):
                 continue
-            fail(f"possible false D3D12/macOS/Linux support claim in {relative}:{line_number}: {line.strip()}")
+            fail(f"possible false D3D12/Linux or macOS runtime support claim in {relative}:{line_number}: {line.strip()}")
 
 
 def check_dev_submodule() -> None:
@@ -286,6 +300,7 @@ def check_docs() -> None:
     require_text(readme, "does **not** claim Unreal runtime support")
     require_text(readme, "does not invoke Unreal Engine")
     require_text(readme, "Win64 + D3D11")
+    require_text(readme, "macOS + Metal")
     require_text(ROOT / "docs" / "phase-0-feasibility.md", "What is not proven yet")
     require_text(ROOT / "docs" / "runtime-smoke-matrix.md", "MISSING")
     require_text(ROOT / "THIRD-PARTY-NOTICES.md", "does not ship third-party binaries")
@@ -296,8 +311,10 @@ def check_workflow() -> None:
     require_text(workflow, "python3 scripts/check_package_shape.py")
     require_text(workflow, "python3 scripts/package_source.py")
     require_text(workflow, "cmake -S . -B build/native-ci")
-    require_text(workflow, "NOZZLE_UNREAL_NATIVE_FORCE_WIN64_D3D11=ON")
     require_text(workflow, "NOZZLE_UNREAL_NATIVE_WITH_NOZZLE_CORE=OFF")
+    require_text(workflow, "windows-latest")
+    require_text(workflow, "macos-latest")
+    require_text(workflow, "linux-unsupported")
     text = workflow.read_text(encoding="utf-8")
     if "RunUAT" in text or "BuildPlugin" in text:
         fail("static workflow must not pretend to run Unreal BuildPlugin")

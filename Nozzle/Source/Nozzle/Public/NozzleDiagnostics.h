@@ -31,6 +31,9 @@ struct NOZZLE_API FNozzleRuntimeDiagnostics
     bool bD3D11RHI = false;
 
     UPROPERTY(BlueprintReadOnly, Category = "Nozzle")
+    bool bMetalRHI = false;
+
+    UPROPERTY(BlueprintReadOnly, Category = "Nozzle")
     bool bCanUseRuntime = false;
 
     UPROPERTY(BlueprintReadOnly, Category = "Nozzle")

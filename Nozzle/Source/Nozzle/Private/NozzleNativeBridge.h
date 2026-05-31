@@ -12,13 +12,13 @@ struct FNozzleNativeTextureView
     int32 Height = 0;
 };
 
-class FNozzleD3D11Bridge final
+class FNozzleNativeBridge final
 {
 public:
-    static const TCHAR* SupportedBackendName();
     static const TCHAR* UnsupportedRHIMessage();
     static FString GetSelectedRHIName();
     static bool IsD3D11RHI(FString* OutRHIName = nullptr);
+    static bool IsMetalRHI(FString* OutRHIName = nullptr);
     static FNozzleRuntimeDiagnostics MakeRuntimeDiagnostics();
     static bool CaptureNativeTexture_RenderThread(FTextureRenderTargetResource* RenderTargetResource, FNozzleNativeTextureView& OutView, FNozzleRuntimeDiagnostics& OutDiagnostics);
 };

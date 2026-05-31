@@ -1,6 +1,6 @@
 #include "NozzleRuntimeBlueprintLibrary.h"
 
-#include "NozzleD3D11Bridge.h"
+#include "NozzleNativeBridge.h"
 #include "NozzleRuntimeModule.h"
 
 #if WITH_NOZZLE_CORE
@@ -10,13 +10,13 @@
 
 FNozzleRuntimeDiagnostics UNozzleRuntimeBlueprintLibrary::GetNozzleRuntimeDiagnostics()
 {
-    return FNozzleD3D11Bridge::MakeRuntimeDiagnostics();
+    return FNozzleNativeBridge::MakeRuntimeDiagnostics();
 }
 
 TArray<FString> UNozzleRuntimeBlueprintLibrary::EnumerateNozzleSenders(FNozzleRuntimeDiagnostics& OutDiagnostics)
 {
     TArray<FString> SenderNames;
-    OutDiagnostics = FNozzleD3D11Bridge::MakeRuntimeDiagnostics();
+    OutDiagnostics = FNozzleNativeBridge::MakeRuntimeDiagnostics();
     if(!OutDiagnostics.bCanUseRuntime)
     {
         return SenderNames;

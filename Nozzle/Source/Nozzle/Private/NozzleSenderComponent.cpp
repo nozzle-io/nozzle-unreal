@@ -1,7 +1,7 @@
 #include "NozzleSenderComponent.h"
 
 #include "Engine/TextureRenderTarget2D.h"
-#include "NozzleD3D11Bridge.h"
+#include "NozzleNativeBridge.h"
 #include "NozzleRuntimeModule.h"
 #include "RenderingThread.h"
 #include "TextureResource.h"
@@ -34,7 +34,7 @@ void UNozzleSenderComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 
 bool UNozzleSenderComponent::RefreshRuntimeReadiness(const TCHAR* OperationName)
 {
-    LastDiagnostics = FNozzleD3D11Bridge::MakeRuntimeDiagnostics();
+    LastDiagnostics = FNozzleNativeBridge::MakeRuntimeDiagnostics();
     if(!LastDiagnostics.bCanUseRuntime)
     {
         LastDiagnostics.Message = FString::Printf(TEXT("%s blocked: %s"), OperationName, *LastDiagnostics.Message);
@@ -80,7 +80,7 @@ bool UNozzleSenderComponent::StartSender()
 
     bSenderRunning = true;
     LastDiagnostics.State = ENozzleRuntimeState::Running;
-    LastDiagnostics.Message = TEXT("nozzle sender created for D3D11 runtime path");
+    LastDiagnostics.Message = TEXT("nozzle sender created for platform native runtime path");
     return true;
 #else
     LastDiagnostics.State = ENozzleRuntimeState::Unavailable;
@@ -108,7 +108,7 @@ bool UNozzleSenderComponent::PublishFrame()
 {
     if(SourceRenderTarget == nullptr)
     {
-        LastDiagnostics = FNozzleD3D11Bridge::MakeRuntimeDiagnostics();
+        LastDiagnostics = FNozzleNativeBridge::MakeRuntimeDiagnostics();
         LastDiagnostics.State = ENozzleRuntimeState::Error;
         LastDiagnostics.bCanUseRuntime = false;
         LastDiagnostics.Message = TEXT("PublishFrame blocked: SourceRenderTarget is null");
@@ -142,9 +142,9 @@ bool UNozzleSenderComponent::PublishFrame()
         {
             FNozzleNativeTextureView NativeView;
             FNozzleRuntimeDiagnostics RenderThreadDiagnostics;
-            if(!FNozzleD3D11Bridge::CaptureNativeTexture_RenderThread(RenderTargetResource, NativeView, RenderThreadDiagnostics))
+            if(!FNozzleNativeBridge::CaptureNativeTexture_RenderThread(RenderTargetResource, NativeView, RenderThreadDiagnostics))
             {
-                UE_LOG(LogNozzle, Warning, TEXT("D3D11 sender publish skipped: %s"), *RenderThreadDiagnostics.Message);
+                UE_LOG(LogNozzle, Warning, TEXT("platform native sender publish skipped: %s"), *RenderThreadDiagnostics.Message);
                 return;
             }
 
@@ -166,7 +166,7 @@ bool UNozzleSenderComponent::PublishFrame()
     LastDiagnostics.State = ENozzleRuntimeState::Running;
     LastDiagnostics.Width = SourceRenderTarget->SizeX;
     LastDiagnostics.Height = SourceRenderTarget->SizeY;
-    LastDiagnostics.Message = TEXT("queued D3D11 native texture publish on the render thread; CI remains static until Unreal Engine executes this path");
+    LastDiagnostics.Message = TEXT("queued platform native texture publish on the render thread; CI remains static until Unreal Engine executes this path");
     return true;
 #else
     LastDiagnostics.State = ENozzleRuntimeState::Unavailable;
