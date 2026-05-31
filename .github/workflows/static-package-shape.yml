@@ -1,0 +1,38 @@
+name: Static Package Shape
+
+on:
+  push:
+    branches: [main, stable]
+  pull_request:
+    branches: [main, stable]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref_type != 'tag' && github.event_name != 'release' }}
+
+jobs:
+  shape:
+    name: Static scaffold/package checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check repository shape
+        run: python3 scripts/check_package_shape.py
+
+      - name: Create source-shape package
+        run: python3 scripts/package_source.py --output build/nozzle-unreal-scaffold.zip --root-name nozzle-unreal-scaffold
+
+      - name: Check source-shape package
+        run: python3 scripts/check_package_shape.py --package build/nozzle-unreal-scaffold.zip
+
+      - name: Upload source-shape package
+        uses: actions/upload-artifact@v4
+        with:
+          name: nozzle-unreal-scaffold
+          path: build/nozzle-unreal-scaffold.zip

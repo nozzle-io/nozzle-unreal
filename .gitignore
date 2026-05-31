@@ -1,0 +1,23 @@
+# Build outputs
+build/
+cmake-build-*/
+Binaries/
+Intermediate/
+DerivedDataCache/
+Saved/
+.vs/
+.vscode/
+.idea/
+
+# Unreal-generated user files
+*.sln
+*.suo
+*.user
+*.opensdf
+*.sdf
+*.VC.db
+*.VC.opendb
+
+# OS/editor noise
+.DS_Store
+Thumbs.db

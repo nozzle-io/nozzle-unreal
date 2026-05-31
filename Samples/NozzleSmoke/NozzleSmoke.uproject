@@ -1,0 +1,18 @@
+{
+  "FileVersion": 3,
+  "Category": "Samples",
+  "Description": "Skeleton project for future nozzle Unreal smoke testing. It is not a completed runtime validation sample.",
+  "Modules": [
+    {
+      "Name": "NozzleSmoke",
+      "Type": "Runtime",
+      "LoadingPhase": "Default"
+    }
+  ],
+  "Plugins": [
+    {
+      "Name": "Nozzle",
+      "Enabled": true
+    }
+  ]
+}

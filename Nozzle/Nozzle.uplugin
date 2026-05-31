@@ -1,0 +1,33 @@
+{
+  "FileVersion": 3,
+  "Version": 1,
+  "VersionName": "0.0.0-scaffold",
+  "FriendlyName": "Nozzle",
+  "Description": "Phase 0 scaffold for a nozzle Unreal Engine plugin. This package does not claim runtime texture-sharing support yet.",
+  "Category": "Media",
+  "CreatedBy": "nozzle-io",
+  "CreatedByURL": "https://github.com/nozzle-io",
+  "DocsURL": "https://github.com/nozzle-io/nozzle-unreal",
+  "SupportURL": "https://github.com/nozzle-io/nozzle-dev/issues",
+  "CanContainContent": false,
+  "IsBetaVersion": true,
+  "Installed": false,
+  "Modules": [
+    {
+      "Name": "Nozzle",
+      "Type": "Runtime",
+      "LoadingPhase": "Default",
+      "PlatformAllowList": [
+        "Win64"
+      ]
+    },
+    {
+      "Name": "NozzleEditor",
+      "Type": "Editor",
+      "LoadingPhase": "Default",
+      "PlatformAllowList": [
+        "Win64"
+      ]
+    }
+  ]
+}
