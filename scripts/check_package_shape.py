@@ -38,8 +38,17 @@ REQUIRED_FILES = [
     "scripts/package_source.py",
     "Nozzle/Nozzle.uplugin",
     "Nozzle/Source/Nozzle/Nozzle.Build.cs",
+    "Nozzle/Source/Nozzle/Public/NozzleDiagnostics.h",
+    "Nozzle/Source/Nozzle/Public/NozzleRuntimeBlueprintLibrary.h",
+    "Nozzle/Source/Nozzle/Public/NozzleReceiverComponent.h",
     "Nozzle/Source/Nozzle/Public/NozzleRuntimeModule.h",
+    "Nozzle/Source/Nozzle/Public/NozzleSenderComponent.h",
+    "Nozzle/Source/Nozzle/Private/NozzleD3D11Bridge.h",
+    "Nozzle/Source/Nozzle/Private/NozzleD3D11Bridge.cpp",
+    "Nozzle/Source/Nozzle/Private/NozzleReceiverComponent.cpp",
+    "Nozzle/Source/Nozzle/Private/NozzleRuntimeBlueprintLibrary.cpp",
     "Nozzle/Source/Nozzle/Private/NozzleRuntimeModule.cpp",
+    "Nozzle/Source/Nozzle/Private/NozzleSenderComponent.cpp",
     "Nozzle/Source/NozzleEditor/NozzleEditor.Build.cs",
     "Nozzle/Source/NozzleEditor/Public/NozzleEditorModule.h",
     "Nozzle/Source/NozzleEditor/Private/NozzleEditorModule.cpp",
@@ -150,11 +159,81 @@ def check_build_files() -> None:
     runtime_build = PLUGIN_ROOT / "Source" / "Nozzle" / "Nozzle.Build.cs"
     third_party_build = PLUGIN_ROOT / "Source" / "ThirdParty" / "NozzleCore" / "NozzleCore.Build.cs"
     require_text(runtime_build, "\"RHI\"")
+    require_text(runtime_build, "\"RenderCore\"")
+    require_text(runtime_build, "\"D3D11RHI\"")
+    require_text(runtime_build, "AddEngineThirdPartyPrivateStaticDependencies(Target, \"DX11\")")
     require_text(runtime_build, "NOZZLE_UNREAL_PHASE0_RHI_D3D11=1")
+    require_text(runtime_build, "NOZZLE_UNREAL_D3D11_RUNTIME=1")
     require_text(third_party_build, "Type = ModuleType.External")
     require_text(third_party_build, "WITH_NOZZLE_CORE=0")
+    require_text(third_party_build, "WITH_NOZZLE_CORE=1")
     require_text(third_party_build, "nozzle_c.h")
     require_text(PLUGIN_ROOT / "ThirdParty" / "nozzle" / "README.md", "intentionally empty")
+
+
+def check_runtime_api_skeleton() -> None:
+    public_dir = PLUGIN_ROOT / "Source" / "Nozzle" / "Public"
+    private_dir = PLUGIN_ROOT / "Source" / "Nozzle" / "Private"
+    diagnostics = public_dir / "NozzleDiagnostics.h"
+    sender = public_dir / "NozzleSenderComponent.h"
+    receiver = public_dir / "NozzleReceiverComponent.h"
+    blueprint = public_dir / "NozzleRuntimeBlueprintLibrary.h"
+    bridge = private_dir / "NozzleD3D11Bridge.cpp"
+    sender_impl = private_dir / "NozzleSenderComponent.cpp"
+    receiver_impl = private_dir / "NozzleReceiverComponent.cpp"
+    blueprint_impl = private_dir / "NozzleRuntimeBlueprintLibrary.cpp"
+
+    require_text(diagnostics, "FNozzleRuntimeDiagnostics")
+    require_text(diagnostics, "UnsupportedRHI")
+    require_text(diagnostics, "bWithNozzleCore")
+    require_text(sender, "UNozzleSenderComponent")
+    require_text(sender, "UTextureRenderTarget2D")
+    require_text(receiver, "UNozzleReceiverComponent")
+    require_text(receiver, "UTextureRenderTarget2D")
+    require_text(blueprint, "GetNozzleRuntimeDiagnostics")
+    require_text(blueprint, "EnumerateNozzleSenders")
+
+    require_text(bridge, "GDynamicRHI")
+    require_text(bridge, "FRHITexture::GetNativeResource")
+    require_text(bridge, "unsupported RHI")
+    require_text(bridge, "Win64 D3D11 only")
+    require_text(bridge, "D3D12, macOS, and Linux are not supported")
+    require_text(bridge, "WITH_NOZZLE_CORE")
+
+    require_text(sender_impl, "WITH_NOZZLE_CORE")
+    require_text(sender_impl, "nozzle_sender_create")
+    require_text(sender_impl, "nozzle_sender_publish_native_texture_ex")
+    require_text(sender_impl, "NOZZLE_FORMAT_BGRA8_UNORM")
+    require_text(sender_impl, "ENQUEUE_RENDER_COMMAND")
+    require_text(receiver_impl, "WITH_NOZZLE_CORE")
+    require_text(receiver_impl, "nozzle_receiver_create")
+    require_text(receiver_impl, "nozzle_frame_copy_to_native_texture")
+    require_text(receiver_impl, "NOZZLE_FORMAT_BGRA8_UNORM")
+    require_text(receiver_impl, "ENQUEUE_RENDER_COMMAND")
+    require_text(blueprint_impl, "nozzle_enumerate_senders")
+
+
+def check_no_false_support_claims() -> None:
+    checked_suffixes = {".cs", ".cpp", ".h", ".md", ".ini", ".uplugin", ".uproject", ".py", ".yml", ".yaml"}
+    positive_words = ("support", "supported", "supports", "validated", "working", "runtime")
+    negative_words = ("not", "unsupported", "no ", "false", "do not", "without", "blocked", "reject")
+    watched_tokens = ("D3D12", "macOS", "Linux")
+    for path in ROOT.rglob("*"):
+        if not path.is_file() or path.suffix not in checked_suffixes:
+            continue
+        relative = path.relative_to(ROOT)
+        if any(part in DEV_SUBMODULE_PARTS for part in relative.parts):
+            continue
+        text = path.read_text(encoding="utf-8")
+        for line_number, line in enumerate(text.splitlines(), start=1):
+            lowered = line.lower()
+            if not any(token.lower() in lowered for token in watched_tokens):
+                continue
+            if not any(word in lowered for word in positive_words):
+                continue
+            if any(word in lowered for word in negative_words):
+                continue
+            fail(f"possible false D3D12/macOS/Linux support claim in {relative}:{line_number}: {line.strip()}")
 
 
 def check_dev_submodule() -> None:
@@ -192,6 +271,8 @@ def check_working_tree_shape() -> None:
     check_uplugin()
     check_sample_project()
     check_build_files()
+    check_runtime_api_skeleton()
+    check_no_false_support_claims()
     check_dev_submodule()
     check_docs()
     check_workflow()

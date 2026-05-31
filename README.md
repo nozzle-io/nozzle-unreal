@@ -12,8 +12,8 @@ This repository is intentionally conservative: it does **not** claim Unreal runt
 | Runtime module skeleton | Present |
 | Editor module skeleton | Present |
 | nozzle native dependency staging | Placeholder only |
-| Unreal Engine compile | Not proven |
-| Runtime sender/receiver | Not implemented |
+| Unreal Engine compile | Not proven; CI remains static unless an engine is present |
+| Runtime sender/receiver | Static D3D11-only API skeleton; not engine-compiled |
 | First intended RHI proof | Win64 + D3D11 |
 | D3D12/macOS/Linux support | Not claimed |
 
@@ -50,6 +50,19 @@ The first implementation target is deliberately narrow:
 
 Do not broaden this list from optimism. Unreal's RHI abstraction does not make texture sharing portable by default.
 
+## Runtime API skeleton boundary
+
+The runtime module now exposes the first real API surface:
+
+- `UNozzleSenderComponent` for publishing a `UTextureRenderTarget2D` through a D3D11 native texture path.
+- `UNozzleReceiverComponent` for copying an acquired nozzle frame into a `UTextureRenderTarget2D`.
+- `UNozzleRuntimeBlueprintLibrary` for RHI/core diagnostics and sender discovery.
+- `FNozzleRuntimeDiagnostics` for Blueprint-visible state, selected RHI, backend, dimensions, transfer-mode notes, and failure messages.
+
+This is deliberately guarded. Runtime calls are blocked unless all of these are true: Win64 target, selected Unreal RHI name contains `D3D11`, and `WITH_NOZZLE_CORE=1`. D3D12, macOS, and Linux are not supported by this runtime path.
+
+The code references Unreal RHI APIs (`GDynamicRHI`, `FTextureRenderTargetResource`, `FRHITexture::GetNativeResource`) but static CI does not compile or execute them because no Unreal Engine install is available in repository CI. Treat the skeleton as source-level implementation progress, not runtime evidence. The current sender creation path is intentionally conservative and still needs an engine-backed D3D11 device/context proof before support can be claimed.
+
 ## Native nozzle staging contract
 
 `Nozzle/Source/ThirdParty/NozzleCore/NozzleCore.Build.cs` only enables `WITH_NOZZLE_CORE=1` when all expected staged files exist:
@@ -64,7 +77,7 @@ Until those files are produced by a real build/package process, the module remai
 
 ## Validation commands
 
-Static shape check:
+Static shape check, including runtime-source validation for the D3D11 guard, unsupported-RHI diagnostics, component classes, `WITH_NOZZLE_CORE` behavior, and absence of false D3D12/macOS/Linux support claims:
 
 ```bash
 python3 scripts/check_package_shape.py

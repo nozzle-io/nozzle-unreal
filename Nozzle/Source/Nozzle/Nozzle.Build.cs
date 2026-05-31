@@ -24,8 +24,11 @@ public class Nozzle : ModuleRules
 
         if(Target.Platform == UnrealTargetPlatform.Win64)
         {
+            PrivateDependencyModuleNames.Add("D3D11RHI");
+            AddEngineThirdPartyPrivateStaticDependencies(Target, "DX11");
             PublicDefinitions.Add("NOZZLE_UNREAL_TARGET_WIN64=1");
             PublicDefinitions.Add("NOZZLE_UNREAL_PHASE0_RHI_D3D11=1");
+            PublicDefinitions.Add("NOZZLE_UNREAL_D3D11_RUNTIME=1");
         }
         else
         {
