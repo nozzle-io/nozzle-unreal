@@ -27,6 +27,18 @@ jobs:
       - name: Check repository shape
         run: python3 scripts/check_package_shape.py
 
+      - name: Configure native bridge compile check
+        run: cmake -S . -B build/native-ci -DNOZZLE_UNREAL_NATIVE_FORCE_WIN64_D3D11=ON -DNOZZLE_UNREAL_NATIVE_WITH_NOZZLE_CORE=ON
+
+      - name: Build native bridge compile check
+        run: cmake --build build/native-ci --target nozzle_unreal_native_bridge nozzle_unreal_native_bridge_compile_check
+
+      - name: Configure native bridge disabled-core guard check
+        run: cmake -S . -B build/native-ci-disabled -DNOZZLE_UNREAL_NATIVE_FORCE_WIN64_D3D11=ON -DNOZZLE_UNREAL_NATIVE_WITH_NOZZLE_CORE=OFF
+
+      - name: Build native bridge disabled-core guard check
+        run: cmake --build build/native-ci-disabled --target nozzle_unreal_native_bridge nozzle_unreal_native_bridge_compile_check
+
       - name: Create source-shape package
         run: python3 scripts/package_source.py --output build/nozzle-unreal-scaffold.zip --root-name nozzle-unreal-scaffold
 

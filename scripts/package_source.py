@@ -30,6 +30,8 @@ EXCLUDED_PARTS = {
 
 INCLUDED_ROOTS = [
     ".github",
+    "CMakeLists.txt",
+    "Native",
     "Nozzle",
     "Samples",
     "docs",

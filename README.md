@@ -2,7 +2,7 @@
 
 Phase 0 scaffold for a future Unreal Engine plugin for [nozzle](https://github.com/nozzle-io/nozzle) GPU texture sharing.
 
-This repository is intentionally conservative: it does **not** claim Unreal runtime support, Unreal build coverage, native nozzle linking, or a working texture path. Static CI only checks repository/package shape until a real Unreal Engine build worker exists.
+This repository is intentionally conservative: it does **not** claim Unreal runtime support, Unreal build coverage, native nozzle linking, or a working texture path. CI now includes an Unreal-independent CMake compile check for the native D3D11/nozzle bridge seam, but that still is not Unreal Engine, UHT, linking, or runtime evidence.
 
 ## Current support status
 
@@ -12,8 +12,9 @@ This repository is intentionally conservative: it does **not** claim Unreal runt
 | Runtime module skeleton | Present |
 | Editor module skeleton | Present |
 | nozzle native dependency staging | Placeholder only |
+| Unreal-independent native bridge | CMake object compile check against `deps/nozzle/include`; no Unreal headers, no native link, no runtime execution |
 | Unreal Engine compile | Not proven; CI remains static unless an engine is present |
-| Runtime sender/receiver | Static D3D11-only API skeleton; not engine-compiled |
+| Runtime sender/receiver | Static D3D11-only API skeleton plus native bridge seam; not engine-compiled |
 | First intended RHI proof | Win64 + D3D11 |
 | D3D12/macOS/Linux support | Not claimed |
 
@@ -32,6 +33,7 @@ Nozzle/
   Resources/
 deps/nozzle/                   # development submodule for nozzle-dev sync tooling
 Samples/NozzleSmoke/           # future smoke-test project skeleton
+Native/                         # Unreal-independent native bridge compile check
 docs/
 scripts/
 ```
@@ -63,6 +65,17 @@ This is deliberately guarded. Runtime calls are blocked unless all of these are 
 
 The code references Unreal RHI APIs (`GDynamicRHI`, `FTextureRenderTargetResource`, `FRHITexture::GetNativeResource`) but static CI does not compile or execute them because no Unreal Engine install is available in repository CI. Treat the skeleton as source-level implementation progress, not runtime evidence. The current sender creation path is intentionally conservative and still needs an engine-backed D3D11 device/context proof before support can be claimed.
 
+
+## Unreal-independent native bridge boundary
+
+`Native/nozzle_unreal_native_bridge.*` is a deliberately small C++ layer with no Unreal headers. It accepts D3D11 device/context/texture pointers as opaque `void*` values, builds nozzle C descriptors, and compiles the guarded calls to:
+
+- `nozzle_sender_create_with_native_device`
+- `nozzle_sender_publish_native_texture_ex`
+- `nozzle_frame_copy_to_native_texture`
+
+The root `CMakeLists.txt` builds this as object-only compile targets so GitHub CI can validate the native API path and the disabled-core guard without Unreal Engine or a staged `nozzle.dll`. This is stronger than package-only CI, but it still does not prove Unreal RHI extraction, D3D11 synchronization, native nozzle linking, UHT reflection, Editor PIE, or packaged runtime behavior.
+
 ## Native nozzle staging contract
 
 `Nozzle/Source/ThirdParty/NozzleCore/NozzleCore.Build.cs` only enables `WITH_NOZZLE_CORE=1` when all expected staged files exist:
@@ -77,11 +90,22 @@ Until those files are produced by a real build/package process, the module remai
 
 ## Validation commands
 
-Static shape check, including runtime-source validation for the D3D11 guard, unsupported-RHI diagnostics, component classes, `WITH_NOZZLE_CORE` behavior, and absence of false D3D12/macOS/Linux support claims:
+Static shape check, including runtime-source validation for the D3D11 guard, unsupported-RHI diagnostics, component classes, native bridge files, `WITH_NOZZLE_CORE` behavior, and absence of false D3D12/macOS/Linux support claims:
 
 ```bash
 python3 scripts/check_package_shape.py
 ```
+
+Unreal-independent native bridge compile check:
+
+```bash
+cmake -S . -B build/native-ci -DNOZZLE_UNREAL_NATIVE_FORCE_WIN64_D3D11=ON -DNOZZLE_UNREAL_NATIVE_WITH_NOZZLE_CORE=ON
+cmake --build build/native-ci --target nozzle_unreal_native_bridge nozzle_unreal_native_bridge_compile_check
+cmake -S . -B build/native-ci-disabled -DNOZZLE_UNREAL_NATIVE_FORCE_WIN64_D3D11=ON -DNOZZLE_UNREAL_NATIVE_WITH_NOZZLE_CORE=OFF
+cmake --build build/native-ci-disabled --target nozzle_unreal_native_bridge nozzle_unreal_native_bridge_compile_check
+```
+
+These commands compile object files only. They intentionally do not link a nozzle library, load Unreal Engine, run UHT, or execute a D3D11 runtime smoke.
 
 Source package shape check:
 
@@ -90,7 +114,7 @@ python3 scripts/package_source.py --output build/nozzle-unreal-scaffold.zip --ro
 python3 scripts/check_package_shape.py --package build/nozzle-unreal-scaffold.zip
 ```
 
-These commands do not invoke Unreal Engine. In other words, this static validation does not invoke Unreal Engine as part of CI. That omission is deliberate and must stay visible until real engine CI exists.
+These commands do not invoke Unreal Engine. This static validation and native bridge compile check does not invoke Unreal Engine as part of CI. That omission is deliberate and must stay visible until real engine CI exists.
 
 ## Runtime evidence required later
 

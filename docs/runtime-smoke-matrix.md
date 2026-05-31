@@ -1,6 +1,6 @@
 # Runtime smoke matrix required before support claims
 
-Do not mark any row PASS without command output, logs, screenshots or captured frames, and exact SHAs.
+Do not mark any row PASS without command output, logs, screenshots or captured frames, and exact SHAs. The CMake native bridge compile check is useful preflight evidence, but it does not satisfy any Unreal Engine/UHT/runtime row below.
 
 | Direction | Host mode | Size | Required evidence | Status |
 | --- | --- | --- | --- | --- |

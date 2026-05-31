@@ -34,6 +34,7 @@ REQUIRED_FILES = [
     "THIRD-PARTY-NOTICES.md",
     ".gitmodules",
     ".github/workflows/static-package-shape.yml",
+    "CMakeLists.txt",
     "scripts/check_package_shape.py",
     "scripts/package_source.py",
     "Nozzle/Nozzle.uplugin",
@@ -49,6 +50,9 @@ REQUIRED_FILES = [
     "Nozzle/Source/Nozzle/Private/NozzleRuntimeBlueprintLibrary.cpp",
     "Nozzle/Source/Nozzle/Private/NozzleRuntimeModule.cpp",
     "Nozzle/Source/Nozzle/Private/NozzleSenderComponent.cpp",
+    "Native/nozzle_unreal_native_bridge.h",
+    "Native/nozzle_unreal_native_bridge.cpp",
+    "Native/nozzle_unreal_native_bridge_compile_check.cpp",
     "Nozzle/Source/NozzleEditor/NozzleEditor.Build.cs",
     "Nozzle/Source/NozzleEditor/Public/NozzleEditorModule.h",
     "Nozzle/Source/NozzleEditor/Private/NozzleEditorModule.cpp",
@@ -213,6 +217,39 @@ def check_runtime_api_skeleton() -> None:
     require_text(blueprint_impl, "nozzle_enumerate_senders")
 
 
+def check_native_bridge() -> None:
+    cmake = ROOT / "CMakeLists.txt"
+    header = ROOT / "Native" / "nozzle_unreal_native_bridge.h"
+    implementation = ROOT / "Native" / "nozzle_unreal_native_bridge.cpp"
+    compile_check = ROOT / "Native" / "nozzle_unreal_native_bridge_compile_check.cpp"
+
+    require_text(cmake, "project(nozzle_unreal_native_bridge LANGUAGES CXX)")
+    require_text(cmake, "add_library(nozzle_unreal_native_bridge OBJECT")
+    require_text(cmake, "NOZZLE_UNREAL_NATIVE_FORCE_WIN64_D3D11")
+    require_text(cmake, "NOZZLE_UNREAL_NATIVE_WITH_NOZZLE_CORE")
+    require_text(cmake, "deps/nozzle/include")
+
+    require_text(header, "#include <nozzle/nozzle_c.h>")
+    require_text(header, "runtime_diagnostics")
+    require_text(header, "d3d11_device_view")
+    require_text(header, "d3d11_texture_view")
+    require_text(header, "create_d3d11_sender")
+    require_text(header, "publish_d3d11_texture")
+    require_text(header, "copy_frame_to_d3d11_texture")
+
+    require_text(implementation, "nozzle_sender_create_with_native_device")
+    require_text(implementation, "nozzle_sender_publish_native_texture_ex")
+    require_text(implementation, "nozzle_frame_copy_to_native_texture")
+    require_text(implementation, "NOZZLE_UNREAL_NATIVE_TARGET_WIN64")
+    require_text(implementation, "NOZZLE_UNREAL_NATIVE_D3D11_RUNTIME")
+    require_text(implementation, "NOZZLE_UNREAL_NATIVE_WITH_NOZZLE_CORE")
+    require_text(implementation, "not Unreal Engine runtime evidence")
+
+    require_text(compile_check, "make_runtime_diagnostics")
+    require_text(compile_check, "NOZZLE_BACKEND_D3D11")
+    require_text(compile_check, "NOZZLE_FORMAT_BGRA8_UNORM")
+
+
 def check_no_false_support_claims() -> None:
     checked_suffixes = {".cs", ".cpp", ".h", ".md", ".ini", ".uplugin", ".uproject", ".py", ".yml", ".yaml"}
     positive_words = ("support", "supported", "supports", "validated", "working", "runtime")
@@ -258,6 +295,9 @@ def check_workflow() -> None:
     workflow = ROOT / ".github" / "workflows" / "static-package-shape.yml"
     require_text(workflow, "python3 scripts/check_package_shape.py")
     require_text(workflow, "python3 scripts/package_source.py")
+    require_text(workflow, "cmake -S . -B build/native-ci")
+    require_text(workflow, "NOZZLE_UNREAL_NATIVE_FORCE_WIN64_D3D11=ON")
+    require_text(workflow, "NOZZLE_UNREAL_NATIVE_WITH_NOZZLE_CORE=OFF")
     text = workflow.read_text(encoding="utf-8")
     if "RunUAT" in text or "BuildPlugin" in text:
         fail("static workflow must not pretend to run Unreal BuildPlugin")
@@ -272,6 +312,7 @@ def check_working_tree_shape() -> None:
     check_sample_project()
     check_build_files()
     check_runtime_api_skeleton()
+    check_native_bridge()
     check_no_false_support_claims()
     check_dev_submodule()
     check_docs()
