@@ -20,6 +20,7 @@ EXCLUDED_PARTS = {
     ".vs",
     "Binaries",
     "DerivedDataCache",
+    "deps",
     "Intermediate",
     "Saved",
     "build",
@@ -37,6 +38,7 @@ INCLUDED_ROOTS = [
     "LICENSE",
     "THIRD-PARTY-NOTICES.md",
     ".gitignore",
+    ".gitmodules",
 ]
 
 

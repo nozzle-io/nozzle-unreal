@@ -30,10 +30,13 @@ Nozzle/
     ThirdParty/NozzleCore/     # external module placeholder
   ThirdParty/nozzle/           # future staged headers/libs payload
   Resources/
+deps/nozzle/                   # development submodule for nozzle-dev sync tooling
 Samples/NozzleSmoke/           # future smoke-test project skeleton
 docs/
 scripts/
 ```
+
+The development submodule is `deps/nozzle`, not root `nozzle`. A root `nozzle` directory collides with the `Nozzle/` plugin directory on case-insensitive macOS filesystems.
 
 ## First real target
 

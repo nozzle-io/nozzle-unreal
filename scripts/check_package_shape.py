@@ -24,10 +24,15 @@ GENERATED_PARTS = {
     "Saved",
 }
 
+DEV_SUBMODULE_PARTS = {
+    "deps",
+}
+
 REQUIRED_FILES = [
     "README.md",
     "LICENSE",
     "THIRD-PARTY-NOTICES.md",
+    ".gitmodules",
     ".github/workflows/static-package-shape.yml",
     "scripts/check_package_shape.py",
     "scripts/package_source.py",
@@ -86,6 +91,8 @@ def check_no_generated_dirs() -> None:
         if ".git" in path.parts:
             continue
         relative = path.relative_to(ROOT)
+        if any(part in DEV_SUBMODULE_PARTS for part in relative.parts):
+            continue
         if any(part in GENERATED_PARTS for part in relative.parts):
             fail(f"generated Unreal directory must not be committed: {relative}")
 
@@ -93,6 +100,9 @@ def check_no_generated_dirs() -> None:
 def check_no_suppressed_failures(paths: Iterable[Path]) -> None:
     for path in paths:
         if not path.is_file():
+            continue
+        relative = path.relative_to(ROOT)
+        if any(part in DEV_SUBMODULE_PARTS for part in relative.parts):
             continue
         if path.suffix not in {".yml", ".yaml", ".sh", ".py", ".md"}:
             continue
@@ -147,6 +157,14 @@ def check_build_files() -> None:
     require_text(PLUGIN_ROOT / "ThirdParty" / "nozzle" / "README.md", "intentionally empty")
 
 
+def check_dev_submodule() -> None:
+    gitmodules = ROOT / ".gitmodules"
+    require_text(gitmodules, "path = deps/nozzle")
+    require_text(gitmodules, "url = git@github.com:nozzle-io/nozzle.git")
+    if any(child.name == "nozzle" for child in ROOT.iterdir()):
+        fail("root nozzle submodule would collide with Nozzle/ on case-insensitive macOS filesystems; use deps/nozzle")
+
+
 def check_docs() -> None:
     readme = ROOT / "README.md"
     require_text(readme, "does **not** claim Unreal runtime support")
@@ -174,6 +192,7 @@ def check_working_tree_shape() -> None:
     check_uplugin()
     check_sample_project()
     check_build_files()
+    check_dev_submodule()
     check_docs()
     check_workflow()
 
