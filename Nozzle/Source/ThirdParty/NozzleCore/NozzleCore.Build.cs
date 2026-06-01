@@ -12,16 +12,19 @@ public class NozzleCore : ModuleRules
         string IncludeDirectory = Path.Combine(NozzleRoot, "include");
         string LibraryPath = "";
         string RuntimeLibraryPath = "";
+        string RuntimeDependencyTargetPath = "";
 
         if(Target.Platform == UnrealTargetPlatform.Win64)
         {
             LibraryPath = Path.Combine(NozzleRoot, "lib", "Win64", "nozzle.lib");
             RuntimeLibraryPath = Path.Combine(NozzleRoot, "bin", "Win64", "nozzle.dll");
+            RuntimeDependencyTargetPath = "$(PluginDir)/ThirdParty/nozzle/bin/Win64/nozzle.dll";
         }
         else if(Target.Platform == UnrealTargetPlatform.Mac)
         {
             LibraryPath = Path.Combine(NozzleRoot, "lib", "Mac", "libnozzle.dylib");
             RuntimeLibraryPath = LibraryPath;
+            RuntimeDependencyTargetPath = "$(PluginDir)/ThirdParty/nozzle/lib/Mac/libnozzle.dylib";
         }
 
         bool HasStagedHeaders = File.Exists(Path.Combine(IncludeDirectory, "nozzle", "nozzle_c.h"));
@@ -32,7 +35,11 @@ public class NozzleCore : ModuleRules
         {
             PublicSystemIncludePaths.Add(IncludeDirectory);
             PublicAdditionalLibraries.Add(LibraryPath);
-            RuntimeDependencies.Add(RuntimeLibraryPath);
+            if(Target.Platform == UnrealTargetPlatform.Win64)
+            {
+                PublicDelayLoadDLLs.Add("nozzle.dll");
+            }
+            RuntimeDependencies.Add(RuntimeDependencyTargetPath, RuntimeLibraryPath);
             PublicDefinitions.Add("WITH_NOZZLE_CORE=1");
         }
         else

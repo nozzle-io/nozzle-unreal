@@ -94,7 +94,17 @@ Nozzle/ThirdParty/nozzle/bin/Win64/nozzle.dll
 Nozzle/ThirdParty/nozzle/lib/Mac/libnozzle.dylib
 ```
 
-Until those files are produced by a real build/package process, the module remains a placeholder and must not be used as linking evidence.
+On Win64 the module also registers `nozzle.dll` as a delay-loaded runtime dependency and stages it through `RuntimeDependencies`. On Mac the dylib is both the link library and runtime dependency. Until those files are produced by a real build/package process, the module remains a placeholder and must not be used as linking evidence.
+
+Native staging contract check:
+
+```bash
+python3 scripts/check_native_staging.py
+python3 scripts/check_native_staging.py --require Mac --inspect-deps
+python3 scripts/check_native_staging.py --require Win64 --inspect-deps
+```
+
+The default command accepts the current empty placeholder state but fails on partial staging. The `--require` mode is for a runner that is supposed to prove native linking; it fails if any required header, link library, runtime library, or dependency-inspection tool is missing.
 
 ## Validation commands
 
@@ -102,6 +112,7 @@ Static shape check, including runtime-source validation for the D3D11 guard, uns
 
 ```bash
 python3 scripts/check_package_shape.py
+python3 scripts/check_native_staging.py
 ```
 
 Unreal-independent native bridge compile check:

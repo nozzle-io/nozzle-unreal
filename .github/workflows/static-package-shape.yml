@@ -27,6 +27,9 @@ jobs:
       - name: Check repository shape
         run: python3 scripts/check_package_shape.py
 
+      - name: Check native staging contract
+        run: python3 scripts/check_native_staging.py
+
       - name: Create source-shape package
         run: python3 scripts/package_source.py --output build/nozzle-unreal-scaffold.zip --root-name nozzle-unreal-scaffold
 

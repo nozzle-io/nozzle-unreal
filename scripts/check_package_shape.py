@@ -36,6 +36,7 @@ REQUIRED_FILES = [
     ".github/workflows/static-package-shape.yml",
     "CMakeLists.txt",
     "scripts/check_package_shape.py",
+    "scripts/check_native_staging.py",
     "scripts/package_source.py",
     "scripts/run_build_plugin.py",
     "Nozzle/Nozzle.uplugin",
@@ -202,6 +203,10 @@ def check_build_files() -> None:
     require_text(third_party_build, "WITH_NOZZLE_CORE=0")
     require_text(third_party_build, "WITH_NOZZLE_CORE=1")
     require_text(third_party_build, "nozzle_c.h")
+    require_text(third_party_build, "PublicDelayLoadDLLs.Add(\"nozzle.dll\")")
+    require_text(third_party_build, "RuntimeDependencies.Add(RuntimeDependencyTargetPath, RuntimeLibraryPath)")
+    require_text(third_party_build, "$(PluginDir)/ThirdParty/nozzle/bin/Win64/nozzle.dll")
+    require_text(third_party_build, "$(PluginDir)/ThirdParty/nozzle/lib/Mac/libnozzle.dylib")
     require_text(third_party_build, "libnozzle.dylib")
     require_text(PLUGIN_ROOT / "ThirdParty" / "nozzle" / "README.md", "intentionally empty")
 
@@ -400,6 +405,7 @@ def check_docs() -> None:
 def check_workflow() -> None:
     workflow = ROOT / ".github" / "workflows" / "static-package-shape.yml"
     require_text(workflow, "python3 scripts/check_package_shape.py")
+    require_text(workflow, "python3 scripts/check_native_staging.py")
     require_text(workflow, "python3 scripts/package_source.py")
     require_text(workflow, "cmake -S . -B build/native-ci")
     require_text(workflow, "NOZZLE_UNREAL_NATIVE_WITH_NOZZLE_CORE=OFF")
