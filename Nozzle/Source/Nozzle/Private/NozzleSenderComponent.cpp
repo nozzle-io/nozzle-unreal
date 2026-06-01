@@ -18,6 +18,7 @@ struct FNozzleSenderRenderState
     NozzleSender* SenderHandle = nullptr;
     bool bCancelRequested = false;
     bool bHasPendingDiagnostics = false;
+    int64 CompletedRenderSequence = 0;
     FNozzleRuntimeDiagnostics PendingDiagnostics;
 };
 
@@ -33,6 +34,7 @@ void StoreSenderRenderDiagnostics(const TSharedPtr<FNozzleSenderRenderState, ESP
 
     FScopeLock Lock(&RenderState->Mutex);
     RenderState->PendingDiagnostics = Diagnostics;
+    RenderState->CompletedRenderSequence += 1;
     RenderState->bHasPendingDiagnostics = true;
 }
 
@@ -79,7 +81,6 @@ void UNozzleSenderComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 
 bool UNozzleSenderComponent::RefreshRuntimeReadiness(const TCHAR* OperationName)
 {
-    DrainRenderThreadDiagnostics();
     LastDiagnostics = FNozzleNativeBridge::MakeRuntimeDiagnostics();
     if(!LastDiagnostics.bCanUseRuntime)
     {
@@ -103,14 +104,15 @@ bool UNozzleSenderComponent::DrainRenderThreadDiagnostics()
         return false;
     }
 
-    LastDiagnostics = RenderState->PendingDiagnostics;
+    LastRenderDiagnostics = RenderState->PendingDiagnostics;
+    LastRenderSequence = RenderState->CompletedRenderSequence;
+    LastDiagnostics = LastRenderDiagnostics;
     RenderState->bHasPendingDiagnostics = false;
     return true;
 }
 
 bool UNozzleSenderComponent::StartSender()
 {
-    DrainRenderThreadDiagnostics();
     if(bSenderRunning)
     {
         return true;
@@ -166,7 +168,6 @@ void UNozzleSenderComponent::StopSender()
 
 bool UNozzleSenderComponent::PublishFrame()
 {
-    DrainRenderThreadDiagnostics();
     if(SourceRenderTarget == nullptr)
     {
         LastDiagnostics = FNozzleNativeBridge::MakeRuntimeDiagnostics();
@@ -260,6 +261,11 @@ bool UNozzleSenderComponent::PublishFrame()
                 }
             }
 
+            if(IsSenderRenderCancelled(LocalRenderState))
+            {
+                return;
+            }
+
             const int32 PublishError = FNozzleNativeBridge::PublishNativeTexture_RenderThread(LocalSenderHandle, NativeView, RenderThreadDiagnostics);
             StoreSenderRenderDiagnostics(LocalRenderState, RenderThreadDiagnostics);
             if(PublishError != 0)
@@ -291,4 +297,16 @@ FNozzleRuntimeDiagnostics UNozzleSenderComponent::GetLastDiagnostics()
 {
     DrainRenderThreadDiagnostics();
     return LastDiagnostics;
+}
+
+FNozzleRuntimeDiagnostics UNozzleSenderComponent::GetLastRenderDiagnostics()
+{
+    DrainRenderThreadDiagnostics();
+    return LastRenderDiagnostics;
+}
+
+int64 UNozzleSenderComponent::GetLastRenderSequence()
+{
+    DrainRenderThreadDiagnostics();
+    return LastRenderSequence;
 }

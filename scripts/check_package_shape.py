@@ -217,6 +217,21 @@ def check_build_files() -> None:
     require_text(PLUGIN_ROOT / "ThirdParty" / "nozzle" / "README.md", "intentionally empty")
 
 
+
+def require_no_drain_in_readiness(path: Path, function_name: str) -> None:
+    require_file(path)
+    text = path.read_text(encoding="utf-8")
+    marker = f"bool {function_name}"
+    start = text.find(marker)
+    if start < 0:
+        fail(f"{path.relative_to(ROOT)} must contain {function_name}")
+    next_function = text.find("\n}\n\n", start)
+    if next_function < 0:
+        fail(f"{path.relative_to(ROOT)} has an unparsable {function_name} body")
+    body = text[start:next_function]
+    if "DrainRenderThreadDiagnostics()" in body:
+        fail(f"{path.relative_to(ROOT)} {function_name} must not drain render diagnostics before overwriting readiness diagnostics")
+
 def check_runtime_api_skeleton() -> None:
     public_dir = PLUGIN_ROOT / "Source" / "Nozzle" / "Public"
     private_dir = PLUGIN_ROOT / "Source" / "Nozzle" / "Private"
@@ -237,10 +252,14 @@ def check_runtime_api_skeleton() -> None:
     require_text(sender, "UTextureRenderTarget2D")
     require_text(sender, "TickComponent")
     require_text(sender, "TSharedPtr<FNozzleSenderRenderState, ESPMode::ThreadSafe>")
+    require_text(sender, "GetLastRenderDiagnostics")
+    require_text(sender, "GetLastRenderSequence")
     require_text(receiver, "UNozzleReceiverComponent")
     require_text(receiver, "UTextureRenderTarget2D")
     require_text(receiver, "TickComponent")
     require_text(receiver, "TSharedPtr<FNozzleReceiverRenderState, ESPMode::ThreadSafe>")
+    require_text(receiver, "GetLastRenderDiagnostics")
+    require_text(receiver, "GetLastRenderSequence")
     require_text(blueprint, "GetNozzleRuntimeDiagnostics")
     require_text(blueprint, "EnumerateNozzleSenders")
 
@@ -269,6 +288,12 @@ def check_runtime_api_skeleton() -> None:
     require_text(sender_impl, "bCancelRequested")
     require_text(sender_impl, "FlushRenderingCommands()")
     require_text(sender_impl, "StoreSenderRenderDiagnostics")
+    require_text(sender_impl, "CompletedRenderSequence += 1")
+    require_text(sender_impl, "LastRenderDiagnostics")
+    require_text(sender_impl, "LastRenderSequence")
+    require_text(sender_impl, "GetLastRenderDiagnostics")
+    require_text(sender_impl, "GetLastRenderSequence")
+    require_no_drain_in_readiness(sender_impl, "UNozzleSenderComponent::RefreshRuntimeReadiness")
     forbid_text(sender_impl, "UNozzleSenderComponent* Component = this", "raw component capture in render command")
     forbid_text(sender_impl, "nozzle_sender_create(&", "default-device sender creation")
     forbid_text(sender_impl, "nozzle_sender_publish_native_texture_ex", "direct native publish outside shared bridge")
@@ -281,6 +306,12 @@ def check_runtime_api_skeleton() -> None:
     require_text(receiver_impl, "bCancelRequested")
     require_text(receiver_impl, "FlushRenderingCommands()")
     require_text(receiver_impl, "StoreReceiverRenderDiagnostics")
+    require_text(receiver_impl, "CompletedRenderSequence += 1")
+    require_text(receiver_impl, "LastRenderDiagnostics")
+    require_text(receiver_impl, "LastRenderSequence")
+    require_text(receiver_impl, "GetLastRenderDiagnostics")
+    require_text(receiver_impl, "GetLastRenderSequence")
+    require_no_drain_in_readiness(receiver_impl, "UNozzleReceiverComponent::RefreshRuntimeReadiness")
     forbid_text(receiver_impl, "nozzle_receiver_create(&", "direct receiver creation outside shared bridge")
     forbid_text(receiver_impl, "nozzle_frame_copy_to_native_texture", "direct native copy outside shared bridge")
     require_text(blueprint_impl, "nozzle_enumerate_senders")
@@ -367,6 +398,8 @@ def check_docs() -> None:
     require_text(readme, "does not invoke Unreal Engine")
     require_text(readme, "Win64 + D3D11")
     require_text(readme, "macOS + Metal")
+    require_text(readme, "repo-shaped source scaffold")
+    require_text(readme, "not a normal Unreal BuildPlugin package")
     require_text(ROOT / "docs" / "phase-0-feasibility.md", "What is not proven yet")
     require_text(ROOT / "docs" / "runtime-smoke-matrix.md", "MISSING")
     require_text(ROOT / "THIRD-PARTY-NOTICES.md", "does not ship third-party binaries")

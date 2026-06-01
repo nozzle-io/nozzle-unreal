@@ -44,6 +44,12 @@ public:
     UFUNCTION(BlueprintPure, Category = "Nozzle|Diagnostics")
     FNozzleRuntimeDiagnostics GetLastDiagnostics();
 
+    UFUNCTION(BlueprintPure, Category = "Nozzle|Diagnostics")
+    FNozzleRuntimeDiagnostics GetLastRenderDiagnostics();
+
+    UFUNCTION(BlueprintPure, Category = "Nozzle|Diagnostics")
+    int64 GetLastRenderSequence();
+
 protected:
     virtual void BeginPlay() override;
     virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
@@ -54,6 +60,8 @@ private:
     NozzleReceiver* ReceiverHandle = nullptr;
     bool bReceiverRunning = false;
     FNozzleRuntimeDiagnostics LastDiagnostics;
+    FNozzleRuntimeDiagnostics LastRenderDiagnostics;
+    int64 LastRenderSequence = 0;
 
     bool RefreshRuntimeReadiness(const TCHAR* OperationName);
     bool DrainRenderThreadDiagnostics();

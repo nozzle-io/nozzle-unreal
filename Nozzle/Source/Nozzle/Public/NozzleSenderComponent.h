@@ -40,6 +40,12 @@ public:
     UFUNCTION(BlueprintPure, Category = "Nozzle|Diagnostics")
     FNozzleRuntimeDiagnostics GetLastDiagnostics();
 
+    UFUNCTION(BlueprintPure, Category = "Nozzle|Diagnostics")
+    FNozzleRuntimeDiagnostics GetLastRenderDiagnostics();
+
+    UFUNCTION(BlueprintPure, Category = "Nozzle|Diagnostics")
+    int64 GetLastRenderSequence();
+
 protected:
     virtual void BeginPlay() override;
     virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
@@ -49,6 +55,8 @@ private:
     TSharedPtr<FNozzleSenderRenderState, ESPMode::ThreadSafe> RenderState;
     bool bSenderRunning = false;
     FNozzleRuntimeDiagnostics LastDiagnostics;
+    FNozzleRuntimeDiagnostics LastRenderDiagnostics;
+    int64 LastRenderSequence = 0;
 
     bool RefreshRuntimeReadiness(const TCHAR* OperationName);
     bool DrainRenderThreadDiagnostics();

@@ -66,7 +66,7 @@ The runtime module now exposes the first real API surface:
 
 This is deliberately guarded. Runtime calls are blocked unless one of these source-level platform/RHI gates is true and `WITH_NOZZLE_CORE=1`: Win64 + selected Unreal RHI name contains `D3D11`, or macOS + selected Unreal RHI name contains `Metal`. D3D12 and Linux are not supported by this runtime path.
 
-The code references Unreal RHI APIs (`GDynamicRHI`, `FTextureRenderTargetResource`, `FRHITexture::GetNativeResource`) but static CI does not compile or execute them because no Unreal Engine install is available in repository CI. Treat the skeleton as source-level implementation progress, not runtime evidence. The sender path now defers creation to the render thread and calls the shared native bridge's `nozzle_sender_create_with_native_device(...)` path after extracting Unreal's native D3D11 device/context or Metal device. Pending render commands no longer capture the component object directly; they use a thread-safe render state, flush on stop, and drain render-thread diagnostics on tick/query. That still needs engine-backed pointer-lifetime, synchronization, IOSurface, and smoke proof before support can be claimed.
+The code references Unreal RHI APIs (`GDynamicRHI`, `FTextureRenderTargetResource`, `FRHITexture::GetNativeResource`) but static CI does not compile or execute them because no Unreal Engine install is available in repository CI. Treat the skeleton as source-level implementation progress, not runtime evidence. The sender path now defers creation to the render thread and calls the shared native bridge's `nozzle_sender_create_with_native_device(...)` path after extracting Unreal's native D3D11 device/context or Metal device. Pending render commands no longer capture the component object directly; they use a thread-safe render state, flush on stop, publish/copy check cancellation immediately before executing GPU work, and expose last render-operation diagnostics plus a monotonically increasing render sequence for smoke tests. That still needs engine-backed pointer-lifetime, synchronization, IOSurface, and smoke proof before support can be claimed.
 
 
 ## Unreal-independent native bridge boundary
@@ -79,7 +79,9 @@ The code references Unreal RHI APIs (`GDynamicRHI`, `FTextureRenderTargetResourc
 
 The root `CMakeLists.txt` builds this as object-only compile targets so GitHub CI can validate the native API path and the disabled-core guard without Unreal Engine or staged nozzle binaries. Windows CI validates the D3D11 seam on a Windows runner; macOS CI validates the Metal seam on a macOS runner; Linux CI validates the unsupported guard. This is stronger than package-only CI, but it still does not prove Unreal RHI extraction, D3D11 synchronization, Metal IOSurface backing, native nozzle linking, UHT reflection, Editor PIE, or packaged runtime behavior.
 
-The injected native device is treated as borrowed from Unreal, not owned by nozzle-unreal. The plugin must keep the sender lifetime inside Unity/Unreal graphics-device lifetime boundaries; this is another reason runtime support cannot be claimed before real engine lifecycle smoke exists.
+This remains a repo-shaped source scaffold. The shared native bridge currently lives at repository-root `Native/`, outside the `Nozzle/` plugin directory, so this is not a normal Unreal BuildPlugin package boundary. Before any redistributable Unreal plugin package claim, either move that bridge under the plugin tree or keep the artifact explicitly repo-shaped.
+
+The injected native device is treated as borrowed from Unreal, not owned by nozzle-unreal. The plugin must keep the sender lifetime inside Unreal graphics-device lifetime boundaries; this is another reason runtime support cannot be claimed before real engine lifecycle smoke exists.
 
 ## Native nozzle staging contract
 

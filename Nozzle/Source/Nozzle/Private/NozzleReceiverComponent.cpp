@@ -17,6 +17,7 @@ struct FNozzleReceiverRenderState
     FCriticalSection Mutex;
     bool bCancelRequested = false;
     bool bHasPendingDiagnostics = false;
+    int64 CompletedRenderSequence = 0;
     FNozzleRuntimeDiagnostics PendingDiagnostics;
 };
 
@@ -32,6 +33,7 @@ void StoreReceiverRenderDiagnostics(const TSharedPtr<FNozzleReceiverRenderState,
 
     FScopeLock Lock(&RenderState->Mutex);
     RenderState->PendingDiagnostics = Diagnostics;
+    RenderState->CompletedRenderSequence += 1;
     RenderState->bHasPendingDiagnostics = true;
 }
 
@@ -78,7 +80,6 @@ void UNozzleReceiverComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 
 bool UNozzleReceiverComponent::RefreshRuntimeReadiness(const TCHAR* OperationName)
 {
-    DrainRenderThreadDiagnostics();
     LastDiagnostics = FNozzleNativeBridge::MakeRuntimeDiagnostics();
     if(!LastDiagnostics.bCanUseRuntime)
     {
@@ -102,14 +103,15 @@ bool UNozzleReceiverComponent::DrainRenderThreadDiagnostics()
         return false;
     }
 
-    LastDiagnostics = RenderState->PendingDiagnostics;
+    LastRenderDiagnostics = RenderState->PendingDiagnostics;
+    LastRenderSequence = RenderState->CompletedRenderSequence;
+    LastDiagnostics = LastRenderDiagnostics;
     RenderState->bHasPendingDiagnostics = false;
     return true;
 }
 
 bool UNozzleReceiverComponent::StartReceiver()
 {
-    DrainRenderThreadDiagnostics();
     if(bReceiverRunning)
     {
         return true;
@@ -170,7 +172,6 @@ void UNozzleReceiverComponent::StopReceiver()
 
 bool UNozzleReceiverComponent::PollFrame()
 {
-    DrainRenderThreadDiagnostics();
     if(TargetRenderTarget == nullptr)
     {
         LastDiagnostics = FNozzleNativeBridge::MakeRuntimeDiagnostics();
@@ -256,6 +257,12 @@ bool UNozzleReceiverComponent::PollFrame()
 
             NativeView.Width = static_cast<int32>(Width);
             NativeView.Height = static_cast<int32>(Height);
+            if(IsReceiverRenderCancelled(LocalRenderState))
+            {
+                nozzle_frame_release(FrameForRenderThread);
+                return;
+            }
+
             const int32 CopyError = FNozzleNativeBridge::CopyFrameToNativeTexture_RenderThread(FrameForRenderThread, NativeView, RenderThreadDiagnostics);
             nozzle_frame_release(FrameForRenderThread);
             StoreReceiverRenderDiagnostics(LocalRenderState, RenderThreadDiagnostics);
@@ -288,4 +295,16 @@ FNozzleRuntimeDiagnostics UNozzleReceiverComponent::GetLastDiagnostics()
 {
     DrainRenderThreadDiagnostics();
     return LastDiagnostics;
+}
+
+FNozzleRuntimeDiagnostics UNozzleReceiverComponent::GetLastRenderDiagnostics()
+{
+    DrainRenderThreadDiagnostics();
+    return LastRenderDiagnostics;
+}
+
+int64 UNozzleReceiverComponent::GetLastRenderSequence()
+{
+    DrainRenderThreadDiagnostics();
+    return LastRenderSequence;
 }
