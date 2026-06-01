@@ -34,10 +34,10 @@ What is not proven yet:
 Engine-backed validation command when an engine exists:
 
 ```bash
-python3 scripts/run_build_plugin.py --runuat /path/to/Engine/Build/BatchFiles/RunUAT.sh --package build/BuildPlugin/Nozzle
+python3 scripts/run_build_plugin.py --runuat /path/to/Engine/Build/BatchFiles/RunUAT.sh --target-platform Win64 --package build/BuildPlugin/Nozzle-Win64
 ```
 
-If `RunUAT` is missing, that is a validation blocker. It must not be converted into a green static CI claim. If `RunUAT` succeeds, the package directory is still rejected unless `Nozzle.uplugin` exists, package-root `Native/` is absent, development `deps/` is absent, generated scratch directories are absent, and the package matches the expected source or binary layout.
+If `RunUAT` is missing, that is a validation blocker. It must not be converted into a green static CI claim. If `RunUAT` succeeds, the package directory is still rejected unless `Nozzle.uplugin` exists, package-root `Native/` is absent, development `deps/` is absent, generated scratch directories are absent, and the package matches the expected source or binary layout. Targeted runs must pass `--target-platform Win64` or `--target-platform Mac`; binary-only assertions then require the matching `Binaries/<target>/` directory instead of accepting a mislabeled artifact.
 
 First real support target for future proof:
 

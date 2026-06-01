@@ -39,6 +39,7 @@ SOURCE_LAYOUT_REQUIRED_FILES = [
     "Source/Nozzle/Public/NozzleReceiverComponent.h",
     "Source/Nozzle/Private/NozzleNativeBridge.cpp",
     "Source/Nozzle/Private/Native/nozzle_unreal_native_bridge.h",
+    "Source/Nozzle/Private/Native/nozzle_unreal_native_bridge.cpp",
     "Source/NozzleEditor/NozzleEditor.Build.cs",
     "Source/ThirdParty/NozzleCore/NozzleCore.Build.cs",
 ]
@@ -156,17 +157,24 @@ def assert_source_layout(package_dir: Path) -> None:
         require_file(package_dir / relative, package_dir)
 
 
-def assert_binary_layout(package_dir: Path) -> None:
+def assert_binary_layout(package_dir: Path, target_platform: str | None) -> None:
     if (package_dir / "Source").exists():
         fail("binary-only BuildPlugin layout was requested, but Source/ is present")
     binaries = package_dir / "Binaries"
     if not binaries.is_dir():
         fail("binary-only BuildPlugin layout was requested, but Binaries/ is missing")
+    if target_platform is not None:
+        target_binaries = binaries / target_platform
+        if not target_binaries.is_dir():
+            fail(f"binary-only BuildPlugin layout for {target_platform} is missing Binaries/{target_platform}/")
+        if not any(path.is_file() for path in target_binaries.rglob("*")):
+            fail(f"binary-only BuildPlugin layout for {target_platform} has an empty Binaries/{target_platform}/ directory")
+        return
     if not any(path.is_file() for path in binaries.rglob("*")):
         fail("binary-only BuildPlugin layout has an empty Binaries/ directory")
 
 
-def assert_package_shape(package_dir: Path, expected_layout: str) -> None:
+def assert_package_shape(package_dir: Path, expected_layout: str, target_platform: str | None) -> None:
     if not package_dir.is_dir():
         fail(f"BuildPlugin did not create the package directory: {package_dir}")
 
@@ -177,15 +185,21 @@ def assert_package_shape(package_dir: Path, expected_layout: str) -> None:
         assert_source_layout(package_dir)
         print("BuildPlugin package assertion: source layout")
     elif expected_layout == "binary":
-        assert_binary_layout(package_dir)
-        print("BuildPlugin package assertion: binary layout")
+        assert_binary_layout(package_dir, target_platform)
+        if target_platform is None:
+            print("BuildPlugin package assertion: binary layout")
+        else:
+            print(f"BuildPlugin package assertion: binary layout for {target_platform}")
     else:
         if (package_dir / "Source").is_dir():
             assert_source_layout(package_dir)
             print("BuildPlugin package assertion: source layout")
         else:
-            assert_binary_layout(package_dir)
-            print("BuildPlugin package assertion: binary layout")
+            assert_binary_layout(package_dir, target_platform)
+            if target_platform is None:
+                print("BuildPlugin package assertion: binary layout")
+            else:
+                print(f"BuildPlugin package assertion: binary layout for {target_platform}")
 
 
 def print_package_tree(package_dir: Path) -> None:
@@ -209,6 +223,7 @@ def main() -> None:
     parser.add_argument("--runuat", type=Path, help="Path to RunUAT.sh, RunUAT.command, or RunUAT.bat")
     parser.add_argument("--engine-root", type=Path, help="Path to Unreal Engine root or its parent containing Engine/")
     parser.add_argument("--package", type=Path, default=ROOT / "build" / "BuildPlugin" / "Nozzle")
+    parser.add_argument("--target-platform", choices=("Win64", "Mac"), help="Pass -TargetPlatforms=<value> to RunUAT BuildPlugin and validate target-specific binary output")
     parser.add_argument("--no-rocket", action="store_true", help="Do not pass -Rocket to BuildPlugin")
     parser.add_argument("--expect-layout", choices=("auto", "source", "binary"), default="auto")
     parser.add_argument("--assert-package-only", action="store_true", help="Skip RunUAT and assert an existing package directory")
@@ -219,7 +234,7 @@ def main() -> None:
 
     package_dir = args.package if args.package.is_absolute() else ROOT / args.package
     if args.assert_package_only:
-        assert_package_shape(package_dir, args.expect_layout)
+        assert_package_shape(package_dir, args.expect_layout, args.target_platform)
         print_package_tree(package_dir)
         return
 
@@ -228,6 +243,7 @@ def main() -> None:
     package_dir.parent.mkdir(parents=True, exist_ok=True)
     print(f"RunUAT: {runuat}")
     print(f"Unreal Engine version: {read_engine_version(runuat)}")
+    print(f"Unreal BuildPlugin target platform: {args.target_platform or 'RunUAT default'}")
     print(f"nozzle-unreal SHA: {subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()}")
     print(f"nozzle core SHA: {subprocess.check_output(['git', '-C', 'deps/nozzle', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()}")
 
@@ -236,6 +252,8 @@ def main() -> None:
         f"-plugin={PLUGIN_DESCRIPTOR}",
         f"-package={package_dir}",
     ]
+    if args.target_platform is not None:
+        runuat_arguments.append(f"-TargetPlatforms={args.target_platform}")
     if not args.no_rocket:
         runuat_arguments.append("-Rocket")
     command = make_runuat_command(runuat, runuat_arguments)
@@ -244,7 +262,7 @@ def main() -> None:
     print(" ".join(command))
     subprocess.run(command, cwd=ROOT, check=True)
 
-    assert_package_shape(package_dir, args.expect_layout)
+    assert_package_shape(package_dir, args.expect_layout, args.target_platform)
     print_package_tree(package_dir)
 
 

@@ -138,15 +138,15 @@ These commands do not invoke Unreal Engine. This static validation and native br
 Engine-backed BuildPlugin validation, when an Unreal Engine install is available:
 
 ```bash
-python3 scripts/run_build_plugin.py --runuat /path/to/Engine/Build/BatchFiles/RunUAT.sh --package build/BuildPlugin/Nozzle
+python3 scripts/run_build_plugin.py --runuat /path/to/Engine/Build/BatchFiles/RunUAT.sh --target-platform Win64 --package build/BuildPlugin/Nozzle-Win64
 ```
 
-The script fails if `RunUAT` cannot be found. A missing engine is a blocker, not a reason to relabel static CI as BuildPlugin coverage. After `RunUAT` returns, the script asserts the package shape before printing the package tree: `Nozzle.uplugin` must exist, package-root `Native/` and development `deps/` are forbidden, generated scratch directories are rejected, and the plugin must match either the expected source layout or an explicitly requested binary-only layout.
+The script fails if `RunUAT` cannot be found. A missing engine is a blocker, not a reason to relabel static CI as BuildPlugin coverage. When `--target-platform Win64` or `--target-platform Mac` is provided, the script passes `-TargetPlatforms=<value>` to `RunUAT`; binary-only package assertions then require `Binaries/Win64/` or `Binaries/Mac/` instead of accepting any binary payload. After `RunUAT` returns, the script asserts the package shape before printing the package tree: `Nozzle.uplugin` must exist, package-root `Native/` and development `deps/` are forbidden, generated scratch directories are rejected, and the plugin must match either the expected source layout or an explicitly requested binary-only layout.
 
 Existing package assertion, useful for reviewing archived BuildPlugin output:
 
 ```bash
-python3 scripts/run_build_plugin.py --assert-package-only --package /path/to/Packaged/Nozzle --expect-layout source
+python3 scripts/run_build_plugin.py --assert-package-only --package /path/to/Packaged/Nozzle --target-platform Win64 --expect-layout source
 ```
 
 Manual GitHub Actions entry point:
@@ -155,7 +155,7 @@ Manual GitHub Actions entry point:
 Actions -> Unreal BuildPlugin -> Run workflow
 ```
 
-That workflow still requires a runner with Unreal Engine already installed and a valid `RunUAT` path. Third-party UE project-build Actions are wrappers around `RunUAT`; they do not remove the engine installation requirement.
+That workflow still requires a runner with Unreal Engine already installed and a valid `RunUAT` path. The `runner_labels_json` input is a JSON array, for example `["self-hosted","Windows","Unreal"]`, `["self-hosted","macOS","Unreal"]`, or `["windows-latest"]` for a hosted image that actually contains the requested engine. Third-party UE project-build Actions are wrappers around `RunUAT`; they do not remove the engine installation requirement.
 
 ## Runtime evidence required later
 
