@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Create a source-shape package for the nozzle Unreal scaffold.
 
-This is not an Unreal BuildPlugin package and must not be described as one.
+This is a source-shape package whose runtime bridge lives inside the plugin
+tree. It is still not BuildPlugin evidence unless RunUAT is executed.
 """
 
 from __future__ import annotations
@@ -31,7 +32,6 @@ EXCLUDED_PARTS = {
 INCLUDED_ROOTS = [
     ".github",
     "CMakeLists.txt",
-    "Native",
     "Nozzle",
     "Samples",
     "docs",

@@ -37,6 +37,7 @@ REQUIRED_FILES = [
     "CMakeLists.txt",
     "scripts/check_package_shape.py",
     "scripts/package_source.py",
+    "scripts/run_build_plugin.py",
     "Nozzle/Nozzle.uplugin",
     "Nozzle/Source/Nozzle/Nozzle.Build.cs",
     "Nozzle/Source/Nozzle/Public/NozzleDiagnostics.h",
@@ -51,9 +52,9 @@ REQUIRED_FILES = [
     "Nozzle/Source/Nozzle/Private/NozzleRuntimeBlueprintLibrary.cpp",
     "Nozzle/Source/Nozzle/Private/NozzleRuntimeModule.cpp",
     "Nozzle/Source/Nozzle/Private/NozzleSenderComponent.cpp",
-    "Native/nozzle_unreal_native_bridge.h",
-    "Native/nozzle_unreal_native_bridge.cpp",
-    "Native/nozzle_unreal_native_bridge_compile_check.cpp",
+    "Nozzle/Source/Nozzle/Private/Native/nozzle_unreal_native_bridge.h",
+    "Nozzle/Source/Nozzle/Private/Native/nozzle_unreal_native_bridge.cpp",
+    "Nozzle/Source/Nozzle/Private/Native/nozzle_unreal_native_bridge_compile_check.cpp",
     "Nozzle/Source/NozzleEditor/NozzleEditor.Build.cs",
     "Nozzle/Source/NozzleEditor/Public/NozzleEditorModule.h",
     "Nozzle/Source/NozzleEditor/Private/NozzleEditorModule.cpp",
@@ -168,27 +169,16 @@ def check_sample_project() -> None:
 
 
 
-def resolve_build_cs_native_include_path(build_file: Path) -> Path:
-    text = build_file.read_text(encoding="utf-8")
-    marker = 'Path.Combine(ModuleDirectory,'
-    start = text.find(marker)
-    if start < 0:
-        fail(f"{build_file.relative_to(ROOT)} must compute RepositoryRoot from ModuleDirectory")
-    end = text.find(')', start)
-    if end < 0:
-        fail(f"{build_file.relative_to(ROOT)} has an unparsable RepositoryRoot Path.Combine expression")
-    expression = text[start:end]
-    parent_count = expression.count('".."')
-    module_directory = PLUGIN_ROOT / "Source" / "Nozzle"
-    resolved = module_directory
-    for _ in range(parent_count):
-        resolved = resolved.parent
-    return (resolved / "Native" / "nozzle_unreal_native_bridge.h").resolve()
-
-
 def check_native_include_path_resolution(runtime_build: Path) -> None:
-    resolved_header = resolve_build_cs_native_include_path(runtime_build)
-    expected_header = (ROOT / "Native" / "nozzle_unreal_native_bridge.h").resolve()
+    text = runtime_build.read_text(encoding="utf-8")
+    required_expression = 'Path.Combine(ModuleDirectory, "Private", "Native")'
+    if required_expression not in text:
+        fail(f"{runtime_build.relative_to(ROOT)} must include the plugin-tree private Native bridge directory")
+    if 'Path.Combine(RepositoryRoot, "Native")' in text or '"..", "..", ".."' in text:
+        fail(f"{runtime_build.relative_to(ROOT)} must not include a repository-root Native bridge path")
+    module_directory = PLUGIN_ROOT / "Source" / "Nozzle"
+    resolved_header = (module_directory / "Private" / "Native" / "nozzle_unreal_native_bridge.h").resolve()
+    expected_header = (PLUGIN_ROOT / "Source" / "Nozzle" / "Private" / "Native" / "nozzle_unreal_native_bridge.h").resolve()
     if resolved_header != expected_header:
         fail(f"Nozzle.Build.cs Native include path resolves to {resolved_header}, expected {expected_header}")
     if not resolved_header.is_file():
@@ -206,8 +196,7 @@ def check_build_files() -> None:
     require_text(runtime_build, "NOZZLE_UNREAL_PHASE0_RHI_METAL=1")
     require_text(runtime_build, "NOZZLE_UNREAL_D3D11_RUNTIME=1")
     require_text(runtime_build, "NOZZLE_UNREAL_METAL_RUNTIME=1")
-    require_text(runtime_build, "Path.Combine(ModuleDirectory, \"..\", \"..\", \"..\")")
-    require_text(runtime_build, "PrivateIncludePaths.Add(Path.Combine(RepositoryRoot, \"Native\"))")
+    require_text(runtime_build, "PrivateIncludePaths.Add(Path.Combine(ModuleDirectory, \"Private\", \"Native\"))")
     check_native_include_path_resolution(runtime_build)
     require_text(third_party_build, "Type = ModuleType.External")
     require_text(third_party_build, "WITH_NOZZLE_CORE=0")
@@ -319,12 +308,15 @@ def check_runtime_api_skeleton() -> None:
 
 def check_native_bridge() -> None:
     cmake = ROOT / "CMakeLists.txt"
-    header = ROOT / "Native" / "nozzle_unreal_native_bridge.h"
-    implementation = ROOT / "Native" / "nozzle_unreal_native_bridge.cpp"
-    compile_check = ROOT / "Native" / "nozzle_unreal_native_bridge_compile_check.cpp"
+    native_dir = PLUGIN_ROOT / "Source" / "Nozzle" / "Private" / "Native"
+    header = native_dir / "nozzle_unreal_native_bridge.h"
+    implementation = native_dir / "nozzle_unreal_native_bridge.cpp"
+    compile_check = native_dir / "nozzle_unreal_native_bridge_compile_check.cpp"
 
     require_text(cmake, "project(nozzle_unreal_native_bridge LANGUAGES CXX)")
     require_text(cmake, "add_library(nozzle_unreal_native_bridge OBJECT")
+    require_text(cmake, "Nozzle/Source/Nozzle/Private/Native/nozzle_unreal_native_bridge.cpp")
+    require_text(cmake, "Nozzle/Source/Nozzle/Private/Native/nozzle_unreal_native_bridge_compile_check.cpp")
     require_text(cmake, "NOZZLE_UNREAL_NATIVE_WITH_NOZZLE_CORE")
     require_text(cmake, "NOZZLE_UNREAL_NATIVE_TARGET_MACOS")
     require_text(cmake, "NOZZLE_UNREAL_NATIVE_METAL_RUNTIME")
@@ -398,8 +390,8 @@ def check_docs() -> None:
     require_text(readme, "does not invoke Unreal Engine")
     require_text(readme, "Win64 + D3D11")
     require_text(readme, "macOS + Metal")
-    require_text(readme, "repo-shaped source scaffold")
-    require_text(readme, "not a normal Unreal BuildPlugin package")
+    require_text(readme, "plugin-tree native bridge")
+    require_text(readme, "BuildPlugin/UHT is still not proven")
     require_text(ROOT / "docs" / "phase-0-feasibility.md", "What is not proven yet")
     require_text(ROOT / "docs" / "runtime-smoke-matrix.md", "MISSING")
     require_text(ROOT / "THIRD-PARTY-NOTICES.md", "does not ship third-party binaries")

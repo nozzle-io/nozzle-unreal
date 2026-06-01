@@ -23,12 +23,20 @@ What is not proven yet:
 - `ID3D11Texture2D*` lifetime/synchronization.
 - Metal `id<MTLTexture>` lifetime/synchronization.
 - explicit borrowed-device lifetime proof: nozzle core stores injected native devices as borrowed pointers, so Unreal must prove the engine device outlives every sender created from it.
-- package boundary proof: current artifacts are repo-shaped source scaffolds because `Native/` is outside `Nozzle/`; a normal BuildPlugin package needs that bridge moved under the plugin tree or an explicitly repo-shaped artifact contract.
+- BuildPlugin/UHT package proof: the native bridge now lives under `Nozzle/Source/Nozzle/Private/Native/`, so the previous repo-root `Native/` package-boundary trap is removed. This is still not engine-backed evidence until `RunUAT BuildPlugin` compiles the runtime/editor modules under an installed Unreal Engine.
 - Whether Unreal's macOS render targets are IOSurface-backed in the required configuration.
 - native D3D11 device/context injection from Unreal into nozzle; the native bridge can build `NozzleNativeDevice` from opaque D3D11 pointers and compile `nozzle_sender_create_with_native_device`, but Unreal still must prove device ownership and synchronization under an engine.
 - native Metal device injection from Unreal into nozzle under a real engine. The source-level `.mm` helper can extract `[Texture device]` from an `id<MTLTexture>` and feed the shared bridge, but Unreal still must prove pointer ownership, IOSurface backing, and synchronization under an engine.
 - Unreal sender or receiver runtime behavior under an installed engine.
 - packaged game behavior.
+
+Engine-backed validation command when an engine exists:
+
+```bash
+python3 scripts/run_build_plugin.py --runuat /path/to/Engine/Build/BatchFiles/RunUAT.sh --package build/BuildPlugin/Nozzle
+```
+
+If `RunUAT` is missing, that is a validation blocker. It must not be converted into a green static CI claim.
 
 First real support target for future proof:
 

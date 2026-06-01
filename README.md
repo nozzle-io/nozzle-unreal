@@ -28,13 +28,13 @@ Nozzle/
   Nozzle.uplugin
   Source/
     Nozzle/                    # runtime module skeleton
+      Private/Native/          # Unreal-independent native bridge compile check
     NozzleEditor/              # editor module skeleton
     ThirdParty/NozzleCore/     # external module placeholder
   ThirdParty/nozzle/           # future staged headers/libs payload
   Resources/
 deps/nozzle/                   # development submodule for nozzle-dev sync tooling
 Samples/NozzleSmoke/           # future smoke-test project skeleton
-Native/                         # Unreal-independent native bridge compile check
 docs/
 scripts/
 ```
@@ -71,7 +71,7 @@ The code references Unreal RHI APIs (`GDynamicRHI`, `FTextureRenderTargetResourc
 
 ## Unreal-independent native bridge boundary
 
-`Native/nozzle_unreal_native_bridge.*` is a deliberately small C++ layer with no Unreal headers. Its implementation is header-inline so both the CMake compile-check and the Unreal module call the same native-device creation/publish/copy seam. It accepts D3D11 device/context pointers, Metal device pointers, and native texture pointers as opaque `void*` values, builds nozzle C descriptors, and compiles the guarded calls to:
+`Nozzle/Source/Nozzle/Private/Native/nozzle_unreal_native_bridge.*` is a deliberately small C++ layer with no Unreal headers. Its implementation is header-inline so both the CMake compile-check and the Unreal module call the same native-device creation/publish/copy seam. It accepts D3D11 device/context pointers, Metal device pointers, and native texture pointers as opaque `void*` values, builds nozzle C descriptors, and compiles the guarded calls to:
 
 - `nozzle_sender_create_with_native_device`
 - `nozzle_sender_publish_native_texture_ex`
@@ -79,7 +79,7 @@ The code references Unreal RHI APIs (`GDynamicRHI`, `FTextureRenderTargetResourc
 
 The root `CMakeLists.txt` builds this as object-only compile targets so GitHub CI can validate the native API path and the disabled-core guard without Unreal Engine or staged nozzle binaries. Windows CI validates the D3D11 seam on a Windows runner; macOS CI validates the Metal seam on a macOS runner; Linux CI validates the unsupported guard. This is stronger than package-only CI, but it still does not prove Unreal RHI extraction, D3D11 synchronization, Metal IOSurface backing, native nozzle linking, UHT reflection, Editor PIE, or packaged runtime behavior.
 
-This remains a repo-shaped source scaffold. The shared native bridge currently lives at repository-root `Native/`, outside the `Nozzle/` plugin directory, so this is not a normal Unreal BuildPlugin package boundary. Before any redistributable Unreal plugin package claim, either move that bridge under the plugin tree or keep the artifact explicitly repo-shaped.
+The plugin-tree native bridge is now inside the plugin tree. That fixes the previous repo-root `Native/` package-boundary trap and makes the source layout compatible with a normal Unreal plugin-shaped package. BuildPlugin/UHT is still not proven: until `RunUAT BuildPlugin` runs against an installed Unreal Engine, this repository only has static package-shape and native bridge compile evidence.
 
 The injected native device is treated as borrowed from Unreal, not owned by nozzle-unreal. The plugin must keep the sender lifetime inside Unreal graphics-device lifetime boundaries; this is another reason runtime support cannot be claimed before real engine lifecycle smoke exists.
 
@@ -123,6 +123,14 @@ python3 scripts/check_package_shape.py --package build/nozzle-unreal-scaffold.zi
 ```
 
 These commands do not invoke Unreal Engine. This static validation and native bridge compile check does not invoke Unreal Engine as part of CI. That omission is deliberate and must stay visible until real engine CI exists.
+
+Engine-backed BuildPlugin validation, when an Unreal Engine install is available:
+
+```bash
+python3 scripts/run_build_plugin.py --runuat /path/to/Engine/Build/BatchFiles/RunUAT.sh --package build/BuildPlugin/Nozzle
+```
+
+The script fails if `RunUAT` cannot be found. A missing engine is a blocker, not a reason to relabel static CI as BuildPlugin coverage.
 
 ## Runtime evidence required later
 

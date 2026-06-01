@@ -5,16 +5,16 @@ project(nozzle_unreal_native_bridge LANGUAGES CXX)
 option(NOZZLE_UNREAL_NATIVE_WITH_NOZZLE_CORE "Compile the native bridge paths that call the nozzle C API. This checks symbols at compile time but does not link a nozzle binary." ON)
 
 add_library(nozzle_unreal_native_bridge OBJECT
-    Native/nozzle_unreal_native_bridge.cpp
+    Nozzle/Source/Nozzle/Private/Native/nozzle_unreal_native_bridge.cpp
 )
 add_library(nozzle_unreal_native_bridge_compile_check OBJECT
-    Native/nozzle_unreal_native_bridge_compile_check.cpp
+    Nozzle/Source/Nozzle/Private/Native/nozzle_unreal_native_bridge_compile_check.cpp
 )
 
 foreach(target nozzle_unreal_native_bridge nozzle_unreal_native_bridge_compile_check)
     target_compile_features(${target} PUBLIC cxx_std_17)
     target_include_directories(${target} PUBLIC
-        ${CMAKE_CURRENT_SOURCE_DIR}/Native
+        ${CMAKE_CURRENT_SOURCE_DIR}/Nozzle/Source/Nozzle/Private/Native
         ${CMAKE_CURRENT_SOURCE_DIR}/deps/nozzle/include
     )
     target_compile_definitions(${target} PRIVATE
