@@ -424,10 +424,19 @@ def check_workflow() -> None:
     if "RunUAT" in text or "BuildPlugin" in text:
         fail("static workflow must not pretend to run Unreal BuildPlugin")
     require_text(buildplugin_workflow, "workflow_dispatch")
+    require_text(buildplugin_workflow, "runner_labels_json")
+    require_text(buildplugin_workflow, "fromJSON(inputs.runner_labels_json)")
     require_text(buildplugin_workflow, "scripts/run_build_plugin.py")
+    require_text(buildplugin_workflow, "--target-platform")
+    require_text(buildplugin_workflow, "${{ inputs.target_platform }}")
     require_text(buildplugin_workflow, "actions/setup-python@v5")
     require_text(buildplugin_workflow, "Verify RunUAT path exists")
     require_text(buildplugin_workflow, "Upload asserted BuildPlugin package")
+    buildplugin_script = ROOT / "scripts" / "run_build_plugin.py"
+    require_text(buildplugin_script, "-TargetPlatforms=")
+    require_text(buildplugin_script, "Binaries/{target_platform}/")
+    require_text(buildplugin_script, "--allow-runuat-default-target")
+    require_text(buildplugin_script, "RunUAT BuildPlugin evidence must pass --target-platform")
 
 
 def check_working_tree_shape() -> None:

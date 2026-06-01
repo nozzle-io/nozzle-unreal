@@ -224,6 +224,7 @@ def main() -> None:
     parser.add_argument("--engine-root", type=Path, help="Path to Unreal Engine root or its parent containing Engine/")
     parser.add_argument("--package", type=Path, default=ROOT / "build" / "BuildPlugin" / "Nozzle")
     parser.add_argument("--target-platform", choices=("Win64", "Mac"), help="Pass -TargetPlatforms=<value> to RunUAT BuildPlugin and validate target-specific binary output")
+    parser.add_argument("--allow-runuat-default-target", action="store_true", help="Allow a non-assertion RunUAT invocation without -TargetPlatforms; do not use this for acceptance evidence")
     parser.add_argument("--no-rocket", action="store_true", help="Do not pass -Rocket to BuildPlugin")
     parser.add_argument("--expect-layout", choices=("auto", "source", "binary"), default="auto")
     parser.add_argument("--assert-package-only", action="store_true", help="Skip RunUAT and assert an existing package directory")
@@ -237,6 +238,8 @@ def main() -> None:
         assert_package_shape(package_dir, args.expect_layout, args.target_platform)
         print_package_tree(package_dir)
         return
+    if args.target_platform is None and not args.allow_runuat_default_target:
+        fail("RunUAT BuildPlugin evidence must pass --target-platform Win64 or --target-platform Mac; use --allow-runuat-default-target only for diagnostics")
 
     check_repository_has_no_generated_outputs()
     runuat = resolve_runuat(args)

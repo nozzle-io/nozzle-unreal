@@ -37,7 +37,7 @@ Engine-backed validation command when an engine exists:
 python3 scripts/run_build_plugin.py --runuat /path/to/Engine/Build/BatchFiles/RunUAT.sh --target-platform Win64 --package build/BuildPlugin/Nozzle-Win64
 ```
 
-If `RunUAT` is missing, that is a validation blocker. It must not be converted into a green static CI claim. If `RunUAT` succeeds, the package directory is still rejected unless `Nozzle.uplugin` exists, package-root `Native/` is absent, development `deps/` is absent, generated scratch directories are absent, and the package matches the expected source or binary layout. Targeted runs must pass `--target-platform Win64` or `--target-platform Mac`; binary-only assertions then require the matching `Binaries/<target>/` directory instead of accepting a mislabeled artifact.
+If `RunUAT` is missing, that is a validation blocker. It must not be converted into a green static CI claim. If `RunUAT` succeeds, the package directory is still rejected unless `Nozzle.uplugin` exists, package-root `Native/` is absent, development `deps/` is absent, generated scratch directories are absent, and the package matches the expected source or binary layout. Evidence runs must pass `--target-platform Win64` or `--target-platform Mac`; binary-only assertions then require the matching `Binaries/<target>/` directory instead of accepting a mislabeled artifact. A no-target RunUAT call requires explicit `--allow-runuat-default-target` and is diagnostic-only, not acceptance evidence.
 
 First real support target for future proof:
 
