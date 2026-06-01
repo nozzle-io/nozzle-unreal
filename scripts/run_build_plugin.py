@@ -19,12 +19,29 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 PLUGIN_DESCRIPTOR = ROOT / "Nozzle" / "Nozzle.uplugin"
 
-GENERATED_PARTS = {
+REPOSITORY_GENERATED_PARTS = {
     "Binaries",
     "DerivedDataCache",
     "Intermediate",
     "Saved",
 }
+
+PACKAGE_FORBIDDEN_PARTS = {
+    "DerivedDataCache",
+    "Intermediate",
+    "Saved",
+}
+
+SOURCE_LAYOUT_REQUIRED_FILES = [
+    "Nozzle.uplugin",
+    "Source/Nozzle/Nozzle.Build.cs",
+    "Source/Nozzle/Public/NozzleSenderComponent.h",
+    "Source/Nozzle/Public/NozzleReceiverComponent.h",
+    "Source/Nozzle/Private/NozzleNativeBridge.cpp",
+    "Source/Nozzle/Private/Native/nozzle_unreal_native_bridge.h",
+    "Source/NozzleEditor/NozzleEditor.Build.cs",
+    "Source/ThirdParty/NozzleCore/NozzleCore.Build.cs",
+]
 
 
 def fail(message: str) -> None:
@@ -98,8 +115,77 @@ def check_repository_has_no_generated_outputs() -> None:
         relative = path.relative_to(ROOT)
         if relative.parts and relative.parts[0] in {"build", "deps"}:
             continue
-        if any(part in GENERATED_PARTS for part in relative.parts):
+        if any(part in REPOSITORY_GENERATED_PARTS for part in relative.parts):
             fail(f"generated Unreal output must not be committed in the repo tree: {relative}")
+
+
+def require_file(path: Path, package_dir: Path) -> None:
+    if not path.is_file():
+        fail(f"BuildPlugin package is missing required file: {path.relative_to(package_dir)}")
+
+
+def load_package_descriptor(package_dir: Path) -> dict:
+    descriptor_path = package_dir / "Nozzle.uplugin"
+    require_file(descriptor_path, package_dir)
+    try:
+        descriptor = json.loads(descriptor_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as error:
+        fail(f"BuildPlugin package has invalid Nozzle.uplugin JSON: {error}")
+    if not isinstance(descriptor, dict):
+        fail("BuildPlugin package Nozzle.uplugin JSON root must be an object")
+    if descriptor.get("FriendlyName") != "Nozzle":
+        fail("BuildPlugin package Nozzle.uplugin FriendlyName must be Nozzle")
+    return descriptor
+
+
+def check_no_forbidden_package_paths(package_dir: Path) -> None:
+    if (package_dir / "Native").exists():
+        fail("BuildPlugin package must not contain package-root Native/; the native bridge belongs under Source/Nozzle/Private/Native")
+    if (package_dir / "deps").exists():
+        fail("BuildPlugin package must not contain the development deps/ submodule")
+    for path in package_dir.rglob("*"):
+        relative = path.relative_to(package_dir)
+        if ".git" in relative.parts:
+            fail(f"BuildPlugin package must not contain git metadata: {relative}")
+        if any(part in PACKAGE_FORBIDDEN_PARTS for part in relative.parts):
+            fail(f"BuildPlugin package must not contain generated Unreal scratch directory: {relative}")
+
+
+def assert_source_layout(package_dir: Path) -> None:
+    for relative in SOURCE_LAYOUT_REQUIRED_FILES:
+        require_file(package_dir / relative, package_dir)
+
+
+def assert_binary_layout(package_dir: Path) -> None:
+    if (package_dir / "Source").exists():
+        fail("binary-only BuildPlugin layout was requested, but Source/ is present")
+    binaries = package_dir / "Binaries"
+    if not binaries.is_dir():
+        fail("binary-only BuildPlugin layout was requested, but Binaries/ is missing")
+    if not any(path.is_file() for path in binaries.rglob("*")):
+        fail("binary-only BuildPlugin layout has an empty Binaries/ directory")
+
+
+def assert_package_shape(package_dir: Path, expected_layout: str) -> None:
+    if not package_dir.is_dir():
+        fail(f"BuildPlugin did not create the package directory: {package_dir}")
+
+    load_package_descriptor(package_dir)
+    check_no_forbidden_package_paths(package_dir)
+
+    if expected_layout == "source":
+        assert_source_layout(package_dir)
+        print("BuildPlugin package assertion: source layout")
+    elif expected_layout == "binary":
+        assert_binary_layout(package_dir)
+        print("BuildPlugin package assertion: binary layout")
+    else:
+        if (package_dir / "Source").is_dir():
+            assert_source_layout(package_dir)
+            print("BuildPlugin package assertion: source layout")
+        else:
+            assert_binary_layout(package_dir)
+            print("BuildPlugin package assertion: binary layout")
 
 
 def print_package_tree(package_dir: Path) -> None:
@@ -118,16 +204,22 @@ def main() -> None:
     parser.add_argument("--engine-root", type=Path, help="Path to Unreal Engine root or its parent containing Engine/")
     parser.add_argument("--package", type=Path, default=ROOT / "build" / "BuildPlugin" / "Nozzle")
     parser.add_argument("--no-rocket", action="store_true", help="Do not pass -Rocket to BuildPlugin")
+    parser.add_argument("--expect-layout", choices=("auto", "source", "binary"), default="auto")
+    parser.add_argument("--assert-package-only", action="store_true", help="Skip RunUAT and assert an existing package directory")
     args = parser.parse_args()
 
     if not PLUGIN_DESCRIPTOR.is_file():
         fail(f"plugin descriptor is missing: {PLUGIN_DESCRIPTOR}")
 
+    package_dir = args.package if args.package.is_absolute() else ROOT / args.package
+    if args.assert_package_only:
+        assert_package_shape(package_dir, args.expect_layout)
+        print_package_tree(package_dir)
+        return
+
     check_repository_has_no_generated_outputs()
     runuat = resolve_runuat(args)
-    package_dir = args.package if args.package.is_absolute() else ROOT / args.package
     package_dir.parent.mkdir(parents=True, exist_ok=True)
-
     print(f"RunUAT: {runuat}")
     print(f"Unreal Engine version: {read_engine_version(runuat)}")
     print(f"nozzle-unreal SHA: {subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()}")
@@ -146,8 +238,7 @@ def main() -> None:
     print(" ".join(command))
     subprocess.run(command, cwd=ROOT, check=True)
 
-    if not package_dir.is_dir():
-        fail(f"BuildPlugin did not create the package directory: {package_dir}")
+    assert_package_shape(package_dir, args.expect_layout)
     print_package_tree(package_dir)
 
 

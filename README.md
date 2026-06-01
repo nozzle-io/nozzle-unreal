@@ -141,7 +141,13 @@ Engine-backed BuildPlugin validation, when an Unreal Engine install is available
 python3 scripts/run_build_plugin.py --runuat /path/to/Engine/Build/BatchFiles/RunUAT.sh --package build/BuildPlugin/Nozzle
 ```
 
-The script fails if `RunUAT` cannot be found. A missing engine is a blocker, not a reason to relabel static CI as BuildPlugin coverage.
+The script fails if `RunUAT` cannot be found. A missing engine is a blocker, not a reason to relabel static CI as BuildPlugin coverage. After `RunUAT` returns, the script asserts the package shape before printing the package tree: `Nozzle.uplugin` must exist, package-root `Native/` and development `deps/` are forbidden, generated scratch directories are rejected, and the plugin must match either the expected source layout or an explicitly requested binary-only layout.
+
+Existing package assertion, useful for reviewing archived BuildPlugin output:
+
+```bash
+python3 scripts/run_build_plugin.py --assert-package-only --package /path/to/Packaged/Nozzle --expect-layout source
+```
 
 ## Runtime evidence required later
 

@@ -37,7 +37,7 @@ Engine-backed validation command when an engine exists:
 python3 scripts/run_build_plugin.py --runuat /path/to/Engine/Build/BatchFiles/RunUAT.sh --package build/BuildPlugin/Nozzle
 ```
 
-If `RunUAT` is missing, that is a validation blocker. It must not be converted into a green static CI claim.
+If `RunUAT` is missing, that is a validation blocker. It must not be converted into a green static CI claim. If `RunUAT` succeeds, the package directory is still rejected unless `Nozzle.uplugin` exists, package-root `Native/` is absent, development `deps/` is absent, generated scratch directories are absent, and the package matches the expected source or binary layout.
 
 First real support target for future proof:
 
