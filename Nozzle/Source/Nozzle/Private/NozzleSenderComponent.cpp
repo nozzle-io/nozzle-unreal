@@ -57,30 +57,9 @@ bool UNozzleSenderComponent::StartSender()
     }
 
 #if WITH_NOZZLE_CORE
-    FTCHARToUTF8 SenderNameUtf8(*SenderName);
-    NozzleSenderDesc Desc{};
-    Desc.name = SenderNameUtf8.Get();
-    Desc.application_name = "Unreal";
-    Desc.ring_buffer_size = 3;
-    Desc.allow_format_fallback = 0;
-    Desc.fallback_flags = NOZZLE_FALLBACK_NONE;
-    Desc.fallback_flags_valid = 1;
-
-    const NozzleErrorCode Error = nozzle_sender_create(&Desc, &SenderHandle);
-    if(Error != NOZZLE_OK || SenderHandle == nullptr)
-    {
-        SenderHandle = nullptr;
-        bSenderRunning = false;
-        LastDiagnostics.State = ENozzleRuntimeState::Error;
-        LastDiagnostics.bCanUseRuntime = false;
-        LastDiagnostics.Message = FString::Printf(TEXT("nozzle_sender_create failed with error code %d"), static_cast<int32>(Error));
-        UE_LOG(LogNozzle, Error, TEXT("%s"), *LastDiagnostics.Message);
-        return false;
-    }
-
     bSenderRunning = true;
-    LastDiagnostics.State = ENozzleRuntimeState::Running;
-    LastDiagnostics.Message = TEXT("nozzle sender created for platform native runtime path");
+    LastDiagnostics.State = ENozzleRuntimeState::Ready;
+    LastDiagnostics.Message = TEXT("nozzle sender armed; native-device sender creation is deferred to the render thread on first publish");
     return true;
 #else
     LastDiagnostics.State = ENozzleRuntimeState::Unavailable;
@@ -127,38 +106,40 @@ bool UNozzleSenderComponent::PublishFrame()
     }
 
 #if WITH_NOZZLE_CORE
-    NozzleSender* LocalSenderHandle = SenderHandle;
     FTextureRenderTargetResource* RenderTargetResource = SourceRenderTarget->GameThread_GetRenderTargetResource();
-    if(LocalSenderHandle == nullptr || RenderTargetResource == nullptr)
+    if(RenderTargetResource == nullptr)
     {
         LastDiagnostics.State = ENozzleRuntimeState::Error;
         LastDiagnostics.bCanUseRuntime = false;
-        LastDiagnostics.Message = TEXT("PublishFrame blocked: sender handle or render target resource is null");
+        LastDiagnostics.Message = TEXT("PublishFrame blocked: render target resource is null");
         return false;
     }
 
-    ENQUEUE_RENDER_COMMAND(NozzleUnrealPublishD3D11)(
-        [LocalSenderHandle, RenderTargetResource](FRHICommandListImmediate& RHICmdList)
+    UNozzleSenderComponent* Component = this;
+    const FString LocalSenderName = SenderName;
+    ENQUEUE_RENDER_COMMAND(NozzleUnrealPublishNativeTexture)(
+        [Component, LocalSenderName, RenderTargetResource](FRHICommandListImmediate& RHICmdList)
         {
             FNozzleNativeTextureView NativeView;
+            FNozzleNativeDeviceView DeviceView;
             FNozzleRuntimeDiagnostics RenderThreadDiagnostics;
-            if(!FNozzleNativeBridge::CaptureNativeTexture_RenderThread(RenderTargetResource, NativeView, RenderThreadDiagnostics))
+            if(!FNozzleNativeBridge::CaptureNativeTextureAndDevice_RenderThread(RenderTargetResource, NativeView, DeviceView, RenderThreadDiagnostics))
             {
                 UE_LOG(LogNozzle, Warning, TEXT("platform native sender publish skipped: %s"), *RenderThreadDiagnostics.Message);
                 return;
             }
 
-            const NozzleErrorCode Error = nozzle_sender_publish_native_texture_ex(
-                LocalSenderHandle,
-                NativeView.NativeTexture,
-                static_cast<uint32>(NativeView.Width),
-                static_cast<uint32>(NativeView.Height),
-                NOZZLE_FORMAT_BGRA8_UNORM,
-                NOZZLE_FORMAT_BGRA8_UNORM
-            );
-            if(Error != NOZZLE_OK)
+            const int32 CreateError = FNozzleNativeBridge::CreateSenderForNativeDevice_RenderThread(LocalSenderName, DeviceView, Component->SenderHandle, RenderThreadDiagnostics);
+            if(CreateError != 0 || Component->SenderHandle == nullptr)
             {
-                UE_LOG(LogNozzle, Error, TEXT("nozzle_sender_publish_native_texture_ex failed with error code %d"), static_cast<int32>(Error));
+                UE_LOG(LogNozzle, Error, TEXT("native-device sender creation failed before publish: %s"), *RenderThreadDiagnostics.Message);
+                return;
+            }
+
+            const int32 PublishError = FNozzleNativeBridge::PublishNativeTexture_RenderThread(Component->SenderHandle, NativeView, RenderThreadDiagnostics);
+            if(PublishError != 0)
+            {
+                UE_LOG(LogNozzle, Error, TEXT("native texture publish failed: %s"), *RenderThreadDiagnostics.Message);
             }
         }
     );
@@ -166,12 +147,12 @@ bool UNozzleSenderComponent::PublishFrame()
     LastDiagnostics.State = ENozzleRuntimeState::Running;
     LastDiagnostics.Width = SourceRenderTarget->SizeX;
     LastDiagnostics.Height = SourceRenderTarget->SizeY;
-    LastDiagnostics.Message = TEXT("queued platform native texture publish on the render thread; CI remains static until Unreal Engine executes this path");
+    LastDiagnostics.Message = TEXT("queued platform native texture publish on the render thread; sender creation uses Unreal native device, but CI remains static until Unreal Engine executes this path");
     return true;
 #else
     LastDiagnostics.State = ENozzleRuntimeState::Unavailable;
     LastDiagnostics.bCanUseRuntime = false;
-    LastDiagnostics.Message = TEXT("WITH_NOZZLE_CORE=0: PublishFrame cannot call nozzle_sender_publish_native_texture_ex");
+    LastDiagnostics.Message = TEXT("WITH_NOZZLE_CORE=0: PublishFrame cannot use the native texture publish bridge");
     return false;
 #endif
 }

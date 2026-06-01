@@ -57,27 +57,18 @@ bool UNozzleReceiverComponent::StartReceiver()
     }
 
 #if WITH_NOZZLE_CORE
-    FTCHARToUTF8 SenderNameUtf8(*SenderName);
-    NozzleReceiverDesc Desc{};
-    Desc.name = SenderNameUtf8.Get();
-    Desc.application_name = "Unreal";
-    Desc.receive_mode = NOZZLE_RECEIVE_LATEST_ONLY;
-
-    const NozzleErrorCode Error = nozzle_receiver_create(&Desc, &ReceiverHandle);
-    if(Error != NOZZLE_OK || ReceiverHandle == nullptr)
+    const int32 Error = FNozzleNativeBridge::CreateReceiverForBackend(SenderName, ReceiverHandle, LastDiagnostics);
+    if(Error != 0 || ReceiverHandle == nullptr)
     {
         ReceiverHandle = nullptr;
         bReceiverRunning = false;
-        LastDiagnostics.State = ENozzleRuntimeState::Error;
-        LastDiagnostics.bCanUseRuntime = false;
-        LastDiagnostics.Message = FString::Printf(TEXT("nozzle_receiver_create failed with error code %d"), static_cast<int32>(Error));
         UE_LOG(LogNozzle, Error, TEXT("%s"), *LastDiagnostics.Message);
         return false;
     }
 
     bReceiverRunning = true;
     LastDiagnostics.State = ENozzleRuntimeState::Running;
-    LastDiagnostics.Message = TEXT("nozzle receiver created for platform native runtime path");
+    LastDiagnostics.Message = TEXT("nozzle receiver created through the shared native bridge backend gate");
     return true;
 #else
     LastDiagnostics.State = ENozzleRuntimeState::Unavailable;
@@ -170,17 +161,13 @@ bool UNozzleReceiverComponent::PollFrame()
                 return;
             }
 
-            const NozzleErrorCode CopyError = nozzle_frame_copy_to_native_texture(
-                FrameForRenderThread,
-                NativeView.NativeTexture,
-                Width,
-                Height,
-                NOZZLE_FORMAT_BGRA8_UNORM
-            );
+            NativeView.Width = static_cast<int32>(Width);
+            NativeView.Height = static_cast<int32>(Height);
+            const int32 CopyError = FNozzleNativeBridge::CopyFrameToNativeTexture_RenderThread(FrameForRenderThread, NativeView, RenderThreadDiagnostics);
             nozzle_frame_release(FrameForRenderThread);
-            if(CopyError != NOZZLE_OK)
+            if(CopyError != 0)
             {
-                UE_LOG(LogNozzle, Error, TEXT("nozzle_frame_copy_to_native_texture failed with error code %d"), static_cast<int32>(CopyError));
+                UE_LOG(LogNozzle, Error, TEXT("native frame copy failed: %s"), *RenderThreadDiagnostics.Message);
             }
         }
     );
@@ -193,7 +180,7 @@ bool UNozzleReceiverComponent::PollFrame()
 #else
     LastDiagnostics.State = ENozzleRuntimeState::Unavailable;
     LastDiagnostics.bCanUseRuntime = false;
-    LastDiagnostics.Message = TEXT("WITH_NOZZLE_CORE=0: PollFrame cannot call nozzle_receiver_acquire_frame");
+    LastDiagnostics.Message = TEXT("WITH_NOZZLE_CORE=0: PollFrame cannot acquire nozzle frames");
     return false;
 #endif
 }

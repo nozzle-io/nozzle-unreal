@@ -19,12 +19,12 @@ What is not proven yet:
 - UHT/reflection generation.
 - nozzle native library linking inside Unreal.
 - native nozzle library linking in the CMake bridge; the current CMake target is compile-only.
-- safe render-thread access to `FRHITexture::GetNativeResource()` under either D3D11 or Metal.
+- safe render-thread access to `FRHITexture::GetNativeResource()` under either D3D11 or Metal. The source now extracts D3D11 device/context from the native texture and Metal device from `id<MTLTexture>`, but that is not engine-executed evidence.
 - `ID3D11Texture2D*` lifetime/synchronization.
 - Metal `id<MTLTexture>` lifetime/synchronization.
 - Whether Unreal's macOS render targets are IOSurface-backed in the required configuration.
 - native D3D11 device/context injection from Unreal into nozzle; the native bridge can build `NozzleNativeDevice` from opaque D3D11 pointers and compile `nozzle_sender_create_with_native_device`, but Unreal still must prove device ownership and synchronization under an engine.
-- native Metal device injection from Unreal into nozzle; the native bridge can build `NozzleNativeDevice` from an opaque Metal device pointer and compile `nozzle_sender_create_with_native_device`, but Unreal still must prove pointer ownership and synchronization under an engine.
+- native Metal device injection from Unreal into nozzle under a real engine. The source-level `.mm` helper can extract `[Texture device]` from an `id<MTLTexture>` and feed the shared bridge, but Unreal still must prove pointer ownership, IOSurface backing, and synchronization under an engine.
 - Unreal sender or receiver runtime behavior under an installed engine.
 - packaged game behavior.
 
@@ -43,4 +43,4 @@ Parallel source-level path that can advance before runtime support is claimed:
 - Explicit IOSurface backing proof before any live texture-sharing claim.
 - Editor PIE and packaged Development builds as separate evidence.
 
-Any issue comment, README, release note, or CI badge that describes this scaffold as working Unreal runtime support is false until the above evidence exists. Source-level runtime APIs and native compile-checked bridge seams are present for Win64 D3D11 and macOS Metal, but Unreal compilation, native linking, and runtime execution are still blockers.
+Any issue comment, README, release note, or CI badge that describes this scaffold as working Unreal runtime support is false until the above evidence exists. Source-level runtime APIs and native compile-checked bridge seams are present for Win64 D3D11 and macOS Metal, and the Unreal sender path now uses the shared native-device bridge instead of a default-device sender. Unreal compilation, native linking, and runtime execution are still blockers.

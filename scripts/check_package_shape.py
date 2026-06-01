@@ -46,6 +46,7 @@ REQUIRED_FILES = [
     "Nozzle/Source/Nozzle/Public/NozzleSenderComponent.h",
     "Nozzle/Source/Nozzle/Private/NozzleNativeBridge.h",
     "Nozzle/Source/Nozzle/Private/NozzleNativeBridge.cpp",
+    "Nozzle/Source/Nozzle/Private/NozzleNativeBridgeMetal.mm",
     "Nozzle/Source/Nozzle/Private/NozzleReceiverComponent.cpp",
     "Nozzle/Source/Nozzle/Private/NozzleRuntimeBlueprintLibrary.cpp",
     "Nozzle/Source/Nozzle/Private/NozzleRuntimeModule.cpp",
@@ -86,6 +87,13 @@ def require_text(path: Path, needle: str, label: str | None = None) -> None:
     text = path.read_text(encoding="utf-8")
     if needle not in text:
         fail(f"{path.relative_to(ROOT)} must contain {label or needle!r}")
+
+
+def forbid_text(path: Path, needle: str, label: str | None = None) -> None:
+    require_file(path)
+    text = path.read_text(encoding="utf-8")
+    if needle in text:
+        fail(f"{path.relative_to(ROOT)} must not contain {label or needle!r}")
 
 
 def load_json(path: Path) -> dict:
@@ -171,6 +179,7 @@ def check_build_files() -> None:
     require_text(runtime_build, "NOZZLE_UNREAL_PHASE0_RHI_METAL=1")
     require_text(runtime_build, "NOZZLE_UNREAL_D3D11_RUNTIME=1")
     require_text(runtime_build, "NOZZLE_UNREAL_METAL_RUNTIME=1")
+    require_text(runtime_build, "PrivateIncludePaths.Add(Path.Combine(RepositoryRoot, \"Native\"))")
     require_text(third_party_build, "Type = ModuleType.External")
     require_text(third_party_build, "WITH_NOZZLE_CORE=0")
     require_text(third_party_build, "WITH_NOZZLE_CORE=1")
@@ -204,21 +213,32 @@ def check_runtime_api_skeleton() -> None:
 
     require_text(bridge, "GDynamicRHI")
     require_text(bridge, "FRHITexture::GetNativeResource")
+    require_text(bridge, "nozzle_unreal_native_bridge.h")
+    require_text(bridge, "CaptureNativeTextureAndDevice_RenderThread")
+    require_text(bridge, "ID3D11Texture2D::GetDevice")
+    require_text(bridge, "NozzleUnrealExtractMetalDeviceFromNativeTexture")
+    require_text(bridge, "nozzle_sender_create_with_native_device")
+    require_text(bridge, "nozzle_unreal_native::publish_d3d11_texture")
+    require_text(bridge, "nozzle_unreal_native::copy_frame_to_d3d11_texture")
     require_text(bridge, "unsupported RHI")
     require_text(bridge, "Win64 D3D11 and macOS Metal")
     require_text(bridge, "D3D12 and Linux are not supported")
     require_text(bridge, "WITH_NOZZLE_CORE")
+    require_text(private_dir / "NozzleNativeBridgeMetal.mm", "id<MTLTexture>")
+    require_text(private_dir / "NozzleNativeBridgeMetal.mm", "[Texture device]")
 
     require_text(sender_impl, "WITH_NOZZLE_CORE")
-    require_text(sender_impl, "nozzle_sender_create")
-    require_text(sender_impl, "nozzle_sender_publish_native_texture_ex")
-    require_text(sender_impl, "NOZZLE_FORMAT_BGRA8_UNORM")
+    require_text(sender_impl, "CreateSenderForNativeDevice_RenderThread")
+    require_text(sender_impl, "PublishNativeTexture_RenderThread")
     require_text(sender_impl, "ENQUEUE_RENDER_COMMAND")
+    forbid_text(sender_impl, "nozzle_sender_create(&", "default-device sender creation")
+    forbid_text(sender_impl, "nozzle_sender_publish_native_texture_ex", "direct native publish outside shared bridge")
     require_text(receiver_impl, "WITH_NOZZLE_CORE")
-    require_text(receiver_impl, "nozzle_receiver_create")
-    require_text(receiver_impl, "nozzle_frame_copy_to_native_texture")
-    require_text(receiver_impl, "NOZZLE_FORMAT_BGRA8_UNORM")
+    require_text(receiver_impl, "CreateReceiverForBackend")
+    require_text(receiver_impl, "CopyFrameToNativeTexture_RenderThread")
     require_text(receiver_impl, "ENQUEUE_RENDER_COMMAND")
+    forbid_text(receiver_impl, "nozzle_receiver_create(&", "direct receiver creation outside shared bridge")
+    forbid_text(receiver_impl, "nozzle_frame_copy_to_native_texture", "direct native copy outside shared bridge")
     require_text(blueprint_impl, "nozzle_enumerate_senders")
 
 
@@ -248,15 +268,17 @@ def check_native_bridge() -> None:
     require_text(header, "copy_frame_to_d3d11_texture")
     require_text(header, "copy_frame_to_metal_texture")
 
-    require_text(implementation, "nozzle_sender_create_with_native_device")
-    require_text(implementation, "nozzle_sender_publish_native_texture_ex")
-    require_text(implementation, "nozzle_frame_copy_to_native_texture")
-    require_text(implementation, "NOZZLE_UNREAL_NATIVE_TARGET_WIN64")
-    require_text(implementation, "NOZZLE_UNREAL_NATIVE_TARGET_MACOS")
-    require_text(implementation, "NOZZLE_UNREAL_NATIVE_D3D11_RUNTIME")
-    require_text(implementation, "NOZZLE_UNREAL_NATIVE_METAL_RUNTIME")
-    require_text(implementation, "NOZZLE_UNREAL_NATIVE_WITH_NOZZLE_CORE")
-    require_text(implementation, "not Unreal Engine runtime evidence")
+    require_text(header, "nozzle_sender_create_with_native_device")
+    require_text(header, "nozzle_sender_publish_native_texture_ex")
+    require_text(header, "nozzle_frame_copy_to_native_texture")
+    require_text(header, "NOZZLE_UNREAL_NATIVE_TARGET_WIN64")
+    require_text(header, "NOZZLE_UNREAL_NATIVE_TARGET_MACOS")
+    require_text(header, "NOZZLE_UNREAL_NATIVE_D3D11_RUNTIME")
+    require_text(header, "NOZZLE_UNREAL_NATIVE_METAL_RUNTIME")
+    require_text(header, "NOZZLE_UNREAL_NATIVE_WITH_NOZZLE_CORE")
+    require_text(header, "not Unreal Engine runtime evidence")
+    require_text(implementation, "header-inline")
+    require_text(implementation, "Unreal component does not actually call")
 
     require_text(compile_check, "make_runtime_diagnostics")
     require_text(compile_check, "NOZZLE_BACKEND_D3D11")

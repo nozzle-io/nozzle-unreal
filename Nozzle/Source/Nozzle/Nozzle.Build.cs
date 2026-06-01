@@ -1,3 +1,4 @@
+using System.IO;
 using UnrealBuildTool;
 
 public class Nozzle : ModuleRules
@@ -21,6 +22,9 @@ public class Nozzle : ModuleRules
             "RenderCore",
             "RHI"
         });
+
+        string RepositoryRoot = Path.GetFullPath(Path.Combine(ModuleDirectory, "..", "..", "..", ".."));
+        PrivateIncludePaths.Add(Path.Combine(RepositoryRoot, "Native"));
 
         if(Target.Platform == UnrealTargetPlatform.Win64)
         {

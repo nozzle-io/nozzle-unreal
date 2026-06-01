@@ -66,12 +66,12 @@ The runtime module now exposes the first real API surface:
 
 This is deliberately guarded. Runtime calls are blocked unless one of these source-level platform/RHI gates is true and `WITH_NOZZLE_CORE=1`: Win64 + selected Unreal RHI name contains `D3D11`, or macOS + selected Unreal RHI name contains `Metal`. D3D12 and Linux are not supported by this runtime path.
 
-The code references Unreal RHI APIs (`GDynamicRHI`, `FTextureRenderTargetResource`, `FRHITexture::GetNativeResource`) but static CI does not compile or execute them because no Unreal Engine install is available in repository CI. Treat the skeleton as source-level implementation progress, not runtime evidence. The current sender creation path is intentionally conservative and still needs engine-backed D3D11 device/context proof on Windows and Metal texture/IOSurface proof on macOS before support can be claimed.
+The code references Unreal RHI APIs (`GDynamicRHI`, `FTextureRenderTargetResource`, `FRHITexture::GetNativeResource`) but static CI does not compile or execute them because no Unreal Engine install is available in repository CI. Treat the skeleton as source-level implementation progress, not runtime evidence. The sender path now defers creation to the render thread and calls the shared native bridge's `nozzle_sender_create_with_native_device(...)` path after extracting Unreal's native D3D11 device/context or Metal device; that still needs engine-backed pointer-lifetime, synchronization, IOSurface, and smoke proof before support can be claimed.
 
 
 ## Unreal-independent native bridge boundary
 
-`Native/nozzle_unreal_native_bridge.*` is a deliberately small C++ layer with no Unreal headers. It accepts D3D11 device/context pointers, Metal device pointers, and native texture pointers as opaque `void*` values, builds nozzle C descriptors, and compiles the guarded calls to:
+`Native/nozzle_unreal_native_bridge.*` is a deliberately small C++ layer with no Unreal headers. Its implementation is header-inline so both the CMake compile-check and the Unreal module call the same native-device creation/publish/copy seam. It accepts D3D11 device/context pointers, Metal device pointers, and native texture pointers as opaque `void*` values, builds nozzle C descriptors, and compiles the guarded calls to:
 
 - `nozzle_sender_create_with_native_device`
 - `nozzle_sender_publish_native_texture_ex`
