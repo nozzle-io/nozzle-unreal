@@ -19,9 +19,10 @@ What is not proven yet:
 - UHT/reflection generation.
 - nozzle native library linking inside Unreal.
 - native nozzle library linking in the CMake bridge; the current CMake target is compile-only.
-- safe render-thread access to `FRHITexture::GetNativeResource()` under either D3D11 or Metal. The source now extracts D3D11 device/context from the native texture and Metal device from `id<MTLTexture>`, but that is not engine-executed evidence.
+- safe render-thread access to `FRHITexture::GetNativeResource()` under either D3D11 or Metal. The source now extracts D3D11 device/context from the native texture and Metal device from `id<MTLTexture>`, routes render commands through a thread-safe state object instead of capturing the component, and drains render-thread diagnostics on tick/query, but none of that is engine-executed evidence.
 - `ID3D11Texture2D*` lifetime/synchronization.
 - Metal `id<MTLTexture>` lifetime/synchronization.
+- explicit borrowed-device lifetime proof: nozzle core stores injected native devices as borrowed pointers, so Unreal must prove the engine device outlives every sender created from it.
 - Whether Unreal's macOS render targets are IOSurface-backed in the required configuration.
 - native D3D11 device/context injection from Unreal into nozzle; the native bridge can build `NozzleNativeDevice` from opaque D3D11 pointers and compile `nozzle_sender_create_with_native_device`, but Unreal still must prove device ownership and synchronization under an engine.
 - native Metal device injection from Unreal into nozzle under a real engine. The source-level `.mm` helper can extract `[Texture device]` from an `id<MTLTexture>` and feed the shared bridge, but Unreal still must prove pointer ownership, IOSurface backing, and synchronization under an engine.

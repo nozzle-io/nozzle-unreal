@@ -167,6 +167,33 @@ def check_sample_project() -> None:
     require_text(ROOT / "Samples" / "NozzleSmoke" / "README.md", "not runtime evidence")
 
 
+
+def resolve_build_cs_native_include_path(build_file: Path) -> Path:
+    text = build_file.read_text(encoding="utf-8")
+    marker = 'Path.Combine(ModuleDirectory,'
+    start = text.find(marker)
+    if start < 0:
+        fail(f"{build_file.relative_to(ROOT)} must compute RepositoryRoot from ModuleDirectory")
+    end = text.find(')', start)
+    if end < 0:
+        fail(f"{build_file.relative_to(ROOT)} has an unparsable RepositoryRoot Path.Combine expression")
+    expression = text[start:end]
+    parent_count = expression.count('".."')
+    module_directory = PLUGIN_ROOT / "Source" / "Nozzle"
+    resolved = module_directory
+    for _ in range(parent_count):
+        resolved = resolved.parent
+    return (resolved / "Native" / "nozzle_unreal_native_bridge.h").resolve()
+
+
+def check_native_include_path_resolution(runtime_build: Path) -> None:
+    resolved_header = resolve_build_cs_native_include_path(runtime_build)
+    expected_header = (ROOT / "Native" / "nozzle_unreal_native_bridge.h").resolve()
+    if resolved_header != expected_header:
+        fail(f"Nozzle.Build.cs Native include path resolves to {resolved_header}, expected {expected_header}")
+    if not resolved_header.is_file():
+        fail(f"Nozzle.Build.cs Native include path does not contain nozzle_unreal_native_bridge.h: {resolved_header}")
+
 def check_build_files() -> None:
     runtime_build = PLUGIN_ROOT / "Source" / "Nozzle" / "Nozzle.Build.cs"
     third_party_build = PLUGIN_ROOT / "Source" / "ThirdParty" / "NozzleCore" / "NozzleCore.Build.cs"
@@ -179,7 +206,9 @@ def check_build_files() -> None:
     require_text(runtime_build, "NOZZLE_UNREAL_PHASE0_RHI_METAL=1")
     require_text(runtime_build, "NOZZLE_UNREAL_D3D11_RUNTIME=1")
     require_text(runtime_build, "NOZZLE_UNREAL_METAL_RUNTIME=1")
+    require_text(runtime_build, "Path.Combine(ModuleDirectory, \"..\", \"..\", \"..\")")
     require_text(runtime_build, "PrivateIncludePaths.Add(Path.Combine(RepositoryRoot, \"Native\"))")
+    check_native_include_path_resolution(runtime_build)
     require_text(third_party_build, "Type = ModuleType.External")
     require_text(third_party_build, "WITH_NOZZLE_CORE=0")
     require_text(third_party_build, "WITH_NOZZLE_CORE=1")
@@ -206,8 +235,12 @@ def check_runtime_api_skeleton() -> None:
     require_text(diagnostics, "bMetalRHI")
     require_text(sender, "UNozzleSenderComponent")
     require_text(sender, "UTextureRenderTarget2D")
+    require_text(sender, "TickComponent")
+    require_text(sender, "TSharedPtr<FNozzleSenderRenderState, ESPMode::ThreadSafe>")
     require_text(receiver, "UNozzleReceiverComponent")
     require_text(receiver, "UTextureRenderTarget2D")
+    require_text(receiver, "TickComponent")
+    require_text(receiver, "TSharedPtr<FNozzleReceiverRenderState, ESPMode::ThreadSafe>")
     require_text(blueprint, "GetNozzleRuntimeDiagnostics")
     require_text(blueprint, "EnumerateNozzleSenders")
 
@@ -231,12 +264,23 @@ def check_runtime_api_skeleton() -> None:
     require_text(sender_impl, "CreateSenderForNativeDevice_RenderThread")
     require_text(sender_impl, "PublishNativeTexture_RenderThread")
     require_text(sender_impl, "ENQUEUE_RENDER_COMMAND")
+    require_text(sender_impl, "TSharedPtr<FNozzleSenderRenderState, ESPMode::ThreadSafe>")
+    require_text(sender_impl, "DrainRenderThreadDiagnostics")
+    require_text(sender_impl, "bCancelRequested")
+    require_text(sender_impl, "FlushRenderingCommands()")
+    require_text(sender_impl, "StoreSenderRenderDiagnostics")
+    forbid_text(sender_impl, "UNozzleSenderComponent* Component = this", "raw component capture in render command")
     forbid_text(sender_impl, "nozzle_sender_create(&", "default-device sender creation")
     forbid_text(sender_impl, "nozzle_sender_publish_native_texture_ex", "direct native publish outside shared bridge")
     require_text(receiver_impl, "WITH_NOZZLE_CORE")
     require_text(receiver_impl, "CreateReceiverForBackend")
     require_text(receiver_impl, "CopyFrameToNativeTexture_RenderThread")
     require_text(receiver_impl, "ENQUEUE_RENDER_COMMAND")
+    require_text(receiver_impl, "TSharedPtr<FNozzleReceiverRenderState, ESPMode::ThreadSafe>")
+    require_text(receiver_impl, "DrainRenderThreadDiagnostics")
+    require_text(receiver_impl, "bCancelRequested")
+    require_text(receiver_impl, "FlushRenderingCommands()")
+    require_text(receiver_impl, "StoreReceiverRenderDiagnostics")
     forbid_text(receiver_impl, "nozzle_receiver_create(&", "direct receiver creation outside shared bridge")
     forbid_text(receiver_impl, "nozzle_frame_copy_to_native_texture", "direct native copy outside shared bridge")
     require_text(blueprint_impl, "nozzle_enumerate_senders")

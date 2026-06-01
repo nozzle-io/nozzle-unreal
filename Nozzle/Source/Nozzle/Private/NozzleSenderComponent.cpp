@@ -1,19 +1,58 @@
 #include "NozzleSenderComponent.h"
 
 #include "Engine/TextureRenderTarget2D.h"
+#include "HAL/CriticalSection.h"
+#include "Misc/ScopeLock.h"
 #include "NozzleNativeBridge.h"
 #include "NozzleRuntimeModule.h"
 #include "RenderingThread.h"
 #include "TextureResource.h"
 
 #if WITH_NOZZLE_CORE
-#include "Containers/StringConv.h"
 #include "nozzle/nozzle_c.h"
 #endif
 
+struct FNozzleSenderRenderState
+{
+    FCriticalSection Mutex;
+    NozzleSender* SenderHandle = nullptr;
+    bool bCancelRequested = false;
+    bool bHasPendingDiagnostics = false;
+    FNozzleRuntimeDiagnostics PendingDiagnostics;
+};
+
+namespace
+{
+
+void StoreSenderRenderDiagnostics(const TSharedPtr<FNozzleSenderRenderState, ESPMode::ThreadSafe>& RenderState, const FNozzleRuntimeDiagnostics& Diagnostics)
+{
+    if(!RenderState.IsValid())
+    {
+        return;
+    }
+
+    FScopeLock Lock(&RenderState->Mutex);
+    RenderState->PendingDiagnostics = Diagnostics;
+    RenderState->bHasPendingDiagnostics = true;
+}
+
+bool IsSenderRenderCancelled(const TSharedPtr<FNozzleSenderRenderState, ESPMode::ThreadSafe>& RenderState)
+{
+    if(!RenderState.IsValid())
+    {
+        return true;
+    }
+
+    FScopeLock Lock(&RenderState->Mutex);
+    return RenderState->bCancelRequested;
+}
+
+} // namespace
+
 UNozzleSenderComponent::UNozzleSenderComponent()
 {
-    PrimaryComponentTick.bCanEverTick = false;
+    PrimaryComponentTick.bCanEverTick = true;
+    PrimaryComponentTick.bStartWithTickEnabled = true;
 }
 
 void UNozzleSenderComponent::BeginPlay()
@@ -26,6 +65,12 @@ void UNozzleSenderComponent::BeginPlay()
     }
 }
 
+void UNozzleSenderComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
+{
+    Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+    DrainRenderThreadDiagnostics();
+}
+
 void UNozzleSenderComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
     StopSender();
@@ -34,6 +79,7 @@ void UNozzleSenderComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 
 bool UNozzleSenderComponent::RefreshRuntimeReadiness(const TCHAR* OperationName)
 {
+    DrainRenderThreadDiagnostics();
     LastDiagnostics = FNozzleNativeBridge::MakeRuntimeDiagnostics();
     if(!LastDiagnostics.bCanUseRuntime)
     {
@@ -44,8 +90,27 @@ bool UNozzleSenderComponent::RefreshRuntimeReadiness(const TCHAR* OperationName)
     return true;
 }
 
+bool UNozzleSenderComponent::DrainRenderThreadDiagnostics()
+{
+    if(!RenderState.IsValid())
+    {
+        return false;
+    }
+
+    FScopeLock Lock(&RenderState->Mutex);
+    if(!RenderState->bHasPendingDiagnostics)
+    {
+        return false;
+    }
+
+    LastDiagnostics = RenderState->PendingDiagnostics;
+    RenderState->bHasPendingDiagnostics = false;
+    return true;
+}
+
 bool UNozzleSenderComponent::StartSender()
 {
+    DrainRenderThreadDiagnostics();
     if(bSenderRunning)
     {
         return true;
@@ -57,6 +122,7 @@ bool UNozzleSenderComponent::StartSender()
     }
 
 #if WITH_NOZZLE_CORE
+    RenderState = MakeShared<FNozzleSenderRenderState, ESPMode::ThreadSafe>();
     bSenderRunning = true;
     LastDiagnostics.State = ENozzleRuntimeState::Ready;
     LastDiagnostics.Message = TEXT("nozzle sender armed; native-device sender creation is deferred to the render thread on first publish");
@@ -73,18 +139,34 @@ bool UNozzleSenderComponent::StartSender()
 void UNozzleSenderComponent::StopSender()
 {
 #if WITH_NOZZLE_CORE
-    if(SenderHandle != nullptr)
+    TSharedPtr<FNozzleSenderRenderState, ESPMode::ThreadSafe> LocalRenderState = RenderState;
+    if(LocalRenderState.IsValid())
     {
+        {
+            FScopeLock Lock(&LocalRenderState->Mutex);
+            LocalRenderState->bCancelRequested = true;
+        }
         FlushRenderingCommands();
-        nozzle_sender_destroy(SenderHandle);
-        SenderHandle = nullptr;
+
+        NozzleSender* SenderToDestroy = nullptr;
+        {
+            FScopeLock Lock(&LocalRenderState->Mutex);
+            SenderToDestroy = LocalRenderState->SenderHandle;
+            LocalRenderState->SenderHandle = nullptr;
+        }
+        if(SenderToDestroy != nullptr)
+        {
+            nozzle_sender_destroy(SenderToDestroy);
+        }
     }
+    RenderState.Reset();
 #endif
     bSenderRunning = false;
 }
 
 bool UNozzleSenderComponent::PublishFrame()
 {
+    DrainRenderThreadDiagnostics();
     if(SourceRenderTarget == nullptr)
     {
         LastDiagnostics = FNozzleNativeBridge::MakeRuntimeDiagnostics();
@@ -106,6 +188,15 @@ bool UNozzleSenderComponent::PublishFrame()
     }
 
 #if WITH_NOZZLE_CORE
+    TSharedPtr<FNozzleSenderRenderState, ESPMode::ThreadSafe> LocalRenderState = RenderState;
+    if(!LocalRenderState.IsValid())
+    {
+        LastDiagnostics.State = ENozzleRuntimeState::Error;
+        LastDiagnostics.bCanUseRuntime = false;
+        LastDiagnostics.Message = TEXT("PublishFrame blocked: sender render state is not initialized");
+        return false;
+    }
+
     FTextureRenderTargetResource* RenderTargetResource = SourceRenderTarget->GameThread_GetRenderTargetResource();
     if(RenderTargetResource == nullptr)
     {
@@ -115,28 +206,62 @@ bool UNozzleSenderComponent::PublishFrame()
         return false;
     }
 
-    UNozzleSenderComponent* Component = this;
     const FString LocalSenderName = SenderName;
     ENQUEUE_RENDER_COMMAND(NozzleUnrealPublishNativeTexture)(
-        [Component, LocalSenderName, RenderTargetResource](FRHICommandListImmediate& RHICmdList)
+        [LocalRenderState, LocalSenderName, RenderTargetResource](FRHICommandListImmediate& RHICmdList)
         {
+            if(IsSenderRenderCancelled(LocalRenderState))
+            {
+                return;
+            }
+
             FNozzleNativeTextureView NativeView;
             FNozzleNativeDeviceView DeviceView;
             FNozzleRuntimeDiagnostics RenderThreadDiagnostics;
             if(!FNozzleNativeBridge::CaptureNativeTextureAndDevice_RenderThread(RenderTargetResource, NativeView, DeviceView, RenderThreadDiagnostics))
             {
+                StoreSenderRenderDiagnostics(LocalRenderState, RenderThreadDiagnostics);
                 UE_LOG(LogNozzle, Warning, TEXT("platform native sender publish skipped: %s"), *RenderThreadDiagnostics.Message);
                 return;
             }
 
-            const int32 CreateError = FNozzleNativeBridge::CreateSenderForNativeDevice_RenderThread(LocalSenderName, DeviceView, Component->SenderHandle, RenderThreadDiagnostics);
-            if(CreateError != 0 || Component->SenderHandle == nullptr)
+            NozzleSender* LocalSenderHandle = nullptr;
             {
-                UE_LOG(LogNozzle, Error, TEXT("native-device sender creation failed before publish: %s"), *RenderThreadDiagnostics.Message);
-                return;
+                FScopeLock Lock(&LocalRenderState->Mutex);
+                LocalSenderHandle = LocalRenderState->SenderHandle;
             }
 
-            const int32 PublishError = FNozzleNativeBridge::PublishNativeTexture_RenderThread(Component->SenderHandle, NativeView, RenderThreadDiagnostics);
+            if(LocalSenderHandle == nullptr)
+            {
+                const int32 CreateError = FNozzleNativeBridge::CreateSenderForNativeDevice_RenderThread(LocalSenderName, DeviceView, LocalSenderHandle, RenderThreadDiagnostics);
+                if(CreateError != 0 || LocalSenderHandle == nullptr)
+                {
+                    StoreSenderRenderDiagnostics(LocalRenderState, RenderThreadDiagnostics);
+                    UE_LOG(LogNozzle, Error, TEXT("native-device sender creation failed before publish: %s"), *RenderThreadDiagnostics.Message);
+                    return;
+                }
+
+                bool bDestroyCreatedSender = false;
+                {
+                    FScopeLock Lock(&LocalRenderState->Mutex);
+                    if(LocalRenderState->bCancelRequested)
+                    {
+                        bDestroyCreatedSender = true;
+                    }
+                    else
+                    {
+                        LocalRenderState->SenderHandle = LocalSenderHandle;
+                    }
+                }
+                if(bDestroyCreatedSender)
+                {
+                    nozzle_sender_destroy(LocalSenderHandle);
+                    return;
+                }
+            }
+
+            const int32 PublishError = FNozzleNativeBridge::PublishNativeTexture_RenderThread(LocalSenderHandle, NativeView, RenderThreadDiagnostics);
+            StoreSenderRenderDiagnostics(LocalRenderState, RenderThreadDiagnostics);
             if(PublishError != 0)
             {
                 UE_LOG(LogNozzle, Error, TEXT("native texture publish failed: %s"), *RenderThreadDiagnostics.Message);
@@ -147,7 +272,7 @@ bool UNozzleSenderComponent::PublishFrame()
     LastDiagnostics.State = ENozzleRuntimeState::Running;
     LastDiagnostics.Width = SourceRenderTarget->SizeX;
     LastDiagnostics.Height = SourceRenderTarget->SizeY;
-    LastDiagnostics.Message = TEXT("queued platform native texture publish on the render thread; sender creation uses Unreal native device, but CI remains static until Unreal Engine executes this path");
+    LastDiagnostics.Message = TEXT("queued platform native texture publish on the render thread; sender creation uses Unreal native device, and render-thread result is drained on tick/diagnostics query");
     return true;
 #else
     LastDiagnostics.State = ENozzleRuntimeState::Unavailable;
@@ -162,7 +287,8 @@ bool UNozzleSenderComponent::IsSenderRunning() const
     return bSenderRunning;
 }
 
-FNozzleRuntimeDiagnostics UNozzleSenderComponent::GetLastDiagnostics() const
+FNozzleRuntimeDiagnostics UNozzleSenderComponent::GetLastDiagnostics()
 {
+    DrainRenderThreadDiagnostics();
     return LastDiagnostics;
 }

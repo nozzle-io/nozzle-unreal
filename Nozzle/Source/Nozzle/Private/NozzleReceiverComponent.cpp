@@ -1,19 +1,57 @@
 #include "NozzleReceiverComponent.h"
 
 #include "Engine/TextureRenderTarget2D.h"
+#include "HAL/CriticalSection.h"
+#include "Misc/ScopeLock.h"
 #include "NozzleNativeBridge.h"
 #include "NozzleRuntimeModule.h"
 #include "RenderingThread.h"
 #include "TextureResource.h"
 
 #if WITH_NOZZLE_CORE
-#include "Containers/StringConv.h"
 #include "nozzle/nozzle_c.h"
 #endif
 
+struct FNozzleReceiverRenderState
+{
+    FCriticalSection Mutex;
+    bool bCancelRequested = false;
+    bool bHasPendingDiagnostics = false;
+    FNozzleRuntimeDiagnostics PendingDiagnostics;
+};
+
+namespace
+{
+
+void StoreReceiverRenderDiagnostics(const TSharedPtr<FNozzleReceiverRenderState, ESPMode::ThreadSafe>& RenderState, const FNozzleRuntimeDiagnostics& Diagnostics)
+{
+    if(!RenderState.IsValid())
+    {
+        return;
+    }
+
+    FScopeLock Lock(&RenderState->Mutex);
+    RenderState->PendingDiagnostics = Diagnostics;
+    RenderState->bHasPendingDiagnostics = true;
+}
+
+bool IsReceiverRenderCancelled(const TSharedPtr<FNozzleReceiverRenderState, ESPMode::ThreadSafe>& RenderState)
+{
+    if(!RenderState.IsValid())
+    {
+        return true;
+    }
+
+    FScopeLock Lock(&RenderState->Mutex);
+    return RenderState->bCancelRequested;
+}
+
+} // namespace
+
 UNozzleReceiverComponent::UNozzleReceiverComponent()
 {
-    PrimaryComponentTick.bCanEverTick = false;
+    PrimaryComponentTick.bCanEverTick = true;
+    PrimaryComponentTick.bStartWithTickEnabled = true;
 }
 
 void UNozzleReceiverComponent::BeginPlay()
@@ -26,6 +64,12 @@ void UNozzleReceiverComponent::BeginPlay()
     }
 }
 
+void UNozzleReceiverComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
+{
+    Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+    DrainRenderThreadDiagnostics();
+}
+
 void UNozzleReceiverComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
     StopReceiver();
@@ -34,6 +78,7 @@ void UNozzleReceiverComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 
 bool UNozzleReceiverComponent::RefreshRuntimeReadiness(const TCHAR* OperationName)
 {
+    DrainRenderThreadDiagnostics();
     LastDiagnostics = FNozzleNativeBridge::MakeRuntimeDiagnostics();
     if(!LastDiagnostics.bCanUseRuntime)
     {
@@ -44,8 +89,27 @@ bool UNozzleReceiverComponent::RefreshRuntimeReadiness(const TCHAR* OperationNam
     return true;
 }
 
+bool UNozzleReceiverComponent::DrainRenderThreadDiagnostics()
+{
+    if(!RenderState.IsValid())
+    {
+        return false;
+    }
+
+    FScopeLock Lock(&RenderState->Mutex);
+    if(!RenderState->bHasPendingDiagnostics)
+    {
+        return false;
+    }
+
+    LastDiagnostics = RenderState->PendingDiagnostics;
+    RenderState->bHasPendingDiagnostics = false;
+    return true;
+}
+
 bool UNozzleReceiverComponent::StartReceiver()
 {
+    DrainRenderThreadDiagnostics();
     if(bReceiverRunning)
     {
         return true;
@@ -57,10 +121,12 @@ bool UNozzleReceiverComponent::StartReceiver()
     }
 
 #if WITH_NOZZLE_CORE
+    RenderState = MakeShared<FNozzleReceiverRenderState, ESPMode::ThreadSafe>();
     const int32 Error = FNozzleNativeBridge::CreateReceiverForBackend(SenderName, ReceiverHandle, LastDiagnostics);
     if(Error != 0 || ReceiverHandle == nullptr)
     {
         ReceiverHandle = nullptr;
+        RenderState.Reset();
         bReceiverRunning = false;
         UE_LOG(LogNozzle, Error, TEXT("%s"), *LastDiagnostics.Message);
         return false;
@@ -82,18 +148,29 @@ bool UNozzleReceiverComponent::StartReceiver()
 void UNozzleReceiverComponent::StopReceiver()
 {
 #if WITH_NOZZLE_CORE
+    TSharedPtr<FNozzleReceiverRenderState, ESPMode::ThreadSafe> LocalRenderState = RenderState;
+    if(LocalRenderState.IsValid())
+    {
+        {
+            FScopeLock Lock(&LocalRenderState->Mutex);
+            LocalRenderState->bCancelRequested = true;
+        }
+        FlushRenderingCommands();
+    }
+
     if(ReceiverHandle != nullptr)
     {
-        FlushRenderingCommands();
         nozzle_receiver_destroy(ReceiverHandle);
         ReceiverHandle = nullptr;
     }
+    RenderState.Reset();
 #endif
     bReceiverRunning = false;
 }
 
 bool UNozzleReceiverComponent::PollFrame()
 {
+    DrainRenderThreadDiagnostics();
     if(TargetRenderTarget == nullptr)
     {
         LastDiagnostics = FNozzleNativeBridge::MakeRuntimeDiagnostics();
@@ -115,6 +192,15 @@ bool UNozzleReceiverComponent::PollFrame()
     }
 
 #if WITH_NOZZLE_CORE
+    TSharedPtr<FNozzleReceiverRenderState, ESPMode::ThreadSafe> LocalRenderState = RenderState;
+    if(!LocalRenderState.IsValid())
+    {
+        LastDiagnostics.State = ENozzleRuntimeState::Error;
+        LastDiagnostics.bCanUseRuntime = false;
+        LastDiagnostics.Message = TEXT("PollFrame blocked: receiver render state is not initialized");
+        return false;
+    }
+
     NozzleAcquireDesc AcquireDesc{};
     AcquireDesc.timeout_ms = static_cast<uint64>(FMath::Max(0, AcquireTimeoutMs));
 
@@ -149,13 +235,20 @@ bool UNozzleReceiverComponent::PollFrame()
     }
 
     NozzleFrame* FrameForRenderThread = Frame;
-    ENQUEUE_RENDER_COMMAND(NozzleUnrealCopyD3D11Frame)(
-        [FrameForRenderThread, RenderTargetResource, Width = FrameInfo.width, Height = FrameInfo.height](FRHICommandListImmediate& RHICmdList)
+    ENQUEUE_RENDER_COMMAND(NozzleUnrealCopyNativeFrame)(
+        [LocalRenderState, FrameForRenderThread, RenderTargetResource, Width = FrameInfo.width, Height = FrameInfo.height](FRHICommandListImmediate& RHICmdList)
         {
+            if(IsReceiverRenderCancelled(LocalRenderState))
+            {
+                nozzle_frame_release(FrameForRenderThread);
+                return;
+            }
+
             FNozzleNativeTextureView NativeView;
             FNozzleRuntimeDiagnostics RenderThreadDiagnostics;
             if(!FNozzleNativeBridge::CaptureNativeTexture_RenderThread(RenderTargetResource, NativeView, RenderThreadDiagnostics))
             {
+                StoreReceiverRenderDiagnostics(LocalRenderState, RenderThreadDiagnostics);
                 UE_LOG(LogNozzle, Warning, TEXT("platform native receiver copy skipped: %s"), *RenderThreadDiagnostics.Message);
                 nozzle_frame_release(FrameForRenderThread);
                 return;
@@ -165,6 +258,7 @@ bool UNozzleReceiverComponent::PollFrame()
             NativeView.Height = static_cast<int32>(Height);
             const int32 CopyError = FNozzleNativeBridge::CopyFrameToNativeTexture_RenderThread(FrameForRenderThread, NativeView, RenderThreadDiagnostics);
             nozzle_frame_release(FrameForRenderThread);
+            StoreReceiverRenderDiagnostics(LocalRenderState, RenderThreadDiagnostics);
             if(CopyError != 0)
             {
                 UE_LOG(LogNozzle, Error, TEXT("native frame copy failed: %s"), *RenderThreadDiagnostics.Message);
@@ -175,7 +269,7 @@ bool UNozzleReceiverComponent::PollFrame()
     LastDiagnostics.State = ENozzleRuntimeState::Running;
     LastDiagnostics.Width = static_cast<int32>(FrameInfo.width);
     LastDiagnostics.Height = static_cast<int32>(FrameInfo.height);
-    LastDiagnostics.Message = TEXT("queued platform frame copy to Unreal render target on the render thread; CI remains static until Unreal Engine executes this path");
+    LastDiagnostics.Message = TEXT("queued platform frame copy to Unreal render target on the render thread; render-thread result is drained on tick/diagnostics query");
     return true;
 #else
     LastDiagnostics.State = ENozzleRuntimeState::Unavailable;
@@ -190,7 +284,8 @@ bool UNozzleReceiverComponent::IsReceiverRunning() const
     return bReceiverRunning;
 }
 
-FNozzleRuntimeDiagnostics UNozzleReceiverComponent::GetLastDiagnostics() const
+FNozzleRuntimeDiagnostics UNozzleReceiverComponent::GetLastDiagnostics()
 {
+    DrainRenderThreadDiagnostics();
     return LastDiagnostics;
 }

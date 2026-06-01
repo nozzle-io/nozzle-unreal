@@ -23,7 +23,7 @@ public class Nozzle : ModuleRules
             "RHI"
         });
 
-        string RepositoryRoot = Path.GetFullPath(Path.Combine(ModuleDirectory, "..", "..", "..", ".."));
+        string RepositoryRoot = Path.GetFullPath(Path.Combine(ModuleDirectory, "..", "..", ".."));
         PrivateIncludePaths.Add(Path.Combine(RepositoryRoot, "Native"));
 
         if(Target.Platform == UnrealTargetPlatform.Win64)
