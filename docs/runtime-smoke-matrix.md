@@ -10,6 +10,10 @@ Do not mark any row PASS without command output, logs, screenshots or captured f
 | Unreal sender -> nozzle-viewer | Editor PIE | 641x479 | D3D11 RHI, BGRA/native format, no flip, no R/B swap | MISSING |
 | Unreal sender -> nozzle-viewer | Packaged Development | 320x240 | D3D11 RHI, BGRA/native format, no flip, no R/B swap | MISSING |
 | Unreal sender -> nozzle-viewer | Packaged Development | 641x479 | D3D11 RHI, BGRA/native format, no flip, no R/B swap | MISSING |
+| Unreal sender -> nozzle-mixer | Editor PIE | 320x240 | D3D11 RHI, BGRA/native format, no flip, no R/B swap, mixer preview/forwarding observed | MISSING |
+| Unreal sender -> nozzle-mixer | Editor PIE | 641x479 | D3D11 RHI, BGRA/native format, no flip, no R/B swap, mixer preview/forwarding observed | MISSING |
+| Unreal sender -> nozzle-mixer | Packaged Development | 320x240 | D3D11 RHI, BGRA/native format, no flip, no R/B swap, mixer preview/forwarding observed | MISSING |
+| Unreal sender -> nozzle-mixer | Packaged Development | 641x479 | D3D11 RHI, BGRA/native format, no flip, no R/B swap, mixer preview/forwarding observed | MISSING |
 | nozzle-viewer/nozzle-mixer -> Unreal receiver/material | Editor PIE | 320x240 | D3D11 RHI, render target update, no flip, no R/B swap | MISSING |
 | nozzle-viewer/nozzle-mixer -> Unreal receiver/material | Editor PIE | 641x479 | D3D11 RHI, render target update, no flip, no R/B swap | MISSING |
 | nozzle-viewer/nozzle-mixer -> Unreal receiver/material | Packaged Development | 320x240 | D3D11 RHI, render target update, no flip, no R/B swap | MISSING |

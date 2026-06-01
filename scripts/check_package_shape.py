@@ -71,6 +71,7 @@ REQUIRED_FILES = [
     "Samples/NozzleSmoke/Source/NozzleSmoke/NozzleSmoke.h",
     "docs/phase-0-feasibility.md",
     "docs/runtime-smoke-matrix.md",
+    "docs/win64-d3d11-smoke-protocol.md",
 ]
 
 
@@ -398,7 +399,9 @@ def check_docs() -> None:
     require_text(readme, "plugin-tree native bridge")
     require_text(readme, "BuildPlugin/UHT is still not proven")
     require_text(ROOT / "docs" / "phase-0-feasibility.md", "What is not proven yet")
+    require_text(ROOT / "docs" / "runtime-smoke-matrix.md", "Unreal sender -> nozzle-mixer")
     require_text(ROOT / "docs" / "runtime-smoke-matrix.md", "MISSING")
+    require_text(ROOT / "docs" / "win64-d3d11-smoke-protocol.md", "Last render diagnostics sequence")
     require_text(ROOT / "THIRD-PARTY-NOTICES.md", "does not ship third-party binaries")
 
 
