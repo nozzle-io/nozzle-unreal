@@ -149,6 +149,14 @@ Existing package assertion, useful for reviewing archived BuildPlugin output:
 python3 scripts/run_build_plugin.py --assert-package-only --package /path/to/Packaged/Nozzle --expect-layout source
 ```
 
+Manual GitHub Actions entry point:
+
+```text
+Actions -> Unreal BuildPlugin -> Run workflow
+```
+
+That workflow still requires a runner with Unreal Engine already installed and a valid `RunUAT` path. Third-party UE project-build Actions are wrappers around `RunUAT`; they do not remove the engine installation requirement.
+
 ## Runtime evidence required later
 
 See `docs/runtime-smoke-matrix.md`. Minimum proof before any runtime support claim:

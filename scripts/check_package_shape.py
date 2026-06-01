@@ -34,6 +34,7 @@ REQUIRED_FILES = [
     "THIRD-PARTY-NOTICES.md",
     ".gitmodules",
     ".github/workflows/static-package-shape.yml",
+    ".github/workflows/unreal-buildplugin.yml",
     "CMakeLists.txt",
     "scripts/check_package_shape.py",
     "scripts/check_native_staging.py",
@@ -410,6 +411,7 @@ def check_docs() -> None:
 
 def check_workflow() -> None:
     workflow = ROOT / ".github" / "workflows" / "static-package-shape.yml"
+    buildplugin_workflow = ROOT / ".github" / "workflows" / "unreal-buildplugin.yml"
     require_text(workflow, "python3 scripts/check_package_shape.py")
     require_text(workflow, "python3 scripts/check_native_staging.py")
     require_text(workflow, "python3 scripts/package_source.py")
@@ -421,6 +423,11 @@ def check_workflow() -> None:
     text = workflow.read_text(encoding="utf-8")
     if "RunUAT" in text or "BuildPlugin" in text:
         fail("static workflow must not pretend to run Unreal BuildPlugin")
+    require_text(buildplugin_workflow, "workflow_dispatch")
+    require_text(buildplugin_workflow, "scripts/run_build_plugin.py")
+    require_text(buildplugin_workflow, "actions/setup-python@v5")
+    require_text(buildplugin_workflow, "Verify RunUAT path exists")
+    require_text(buildplugin_workflow, "Upload asserted BuildPlugin package")
 
 
 def check_working_tree_shape() -> None:

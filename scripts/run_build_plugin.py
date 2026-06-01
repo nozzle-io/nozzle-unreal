@@ -198,6 +198,12 @@ def print_package_tree(package_dir: Path) -> None:
     print(f"BuildPlugin package file count: {len(files)}")
 
 
+def make_runuat_command(runuat: Path, arguments: list[str]) -> list[str]:
+    if runuat.suffix.lower() in {".bat", ".cmd"}:
+        return ["cmd", "/c", str(runuat), *arguments]
+    return [str(runuat), *arguments]
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--runuat", type=Path, help="Path to RunUAT.sh, RunUAT.command, or RunUAT.bat")
@@ -225,14 +231,14 @@ def main() -> None:
     print(f"nozzle-unreal SHA: {subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()}")
     print(f"nozzle core SHA: {subprocess.check_output(['git', '-C', 'deps/nozzle', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()}")
 
-    command = [
-        str(runuat),
+    runuat_arguments = [
         "BuildPlugin",
         f"-plugin={PLUGIN_DESCRIPTOR}",
         f"-package={package_dir}",
     ]
     if not args.no_rocket:
-        command.append("-Rocket")
+        runuat_arguments.append("-Rocket")
+    command = make_runuat_command(runuat, runuat_arguments)
 
     print("Command:")
     print(" ".join(command))

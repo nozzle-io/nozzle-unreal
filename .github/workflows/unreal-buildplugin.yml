@@ -1,0 +1,100 @@
+name: Unreal BuildPlugin
+
+on:
+  workflow_dispatch:
+    inputs:
+      runner:
+        description: "Runner label. Use a self-hosted runner with Unreal installed, or a hosted runner image that actually has RunUAT."
+        required: true
+        default: "windows-latest"
+      runuat_path:
+        description: "Path to Engine/Build/BatchFiles/RunUAT.bat/.sh/.command on the runner"
+        required: true
+        default: "C:/Program Files/Epic Games/UE_5.6/Engine/Build/BatchFiles/RunUAT.bat"
+      target_platform:
+        description: "Unreal BuildPlugin target platform"
+        required: true
+        default: "Win64"
+        type: choice
+        options:
+          - Win64
+          - Mac
+      expect_layout:
+        description: "Expected package layout after BuildPlugin"
+        required: true
+        default: "auto"
+        type: choice
+        options:
+          - auto
+          - source
+          - binary
+      no_rocket:
+        description: "Do not pass -Rocket to BuildPlugin"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ inputs.target_platform }}
+  cancel-in-progress: false
+
+jobs:
+  buildplugin:
+    name: BuildPlugin (${{ inputs.target_platform }})
+    runs-on: ${{ inputs.runner }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Check static source shape first
+        run: python scripts/check_package_shape.py
+
+      - name: Check native staging contract
+        run: python scripts/check_native_staging.py
+
+      - name: Verify RunUAT path exists
+        shell: python
+        run: |
+          from pathlib import Path
+          import sys
+
+          runuat_path = Path(r"""${{ inputs.runuat_path }}""")
+          if not runuat_path.is_file():
+              print(f"RunUAT path does not exist: {runuat_path}", file=sys.stderr)
+              sys.exit(1)
+
+      - name: Run BuildPlugin with package assertions
+        shell: python
+        run: |
+          import subprocess
+          import sys
+
+          command = [
+              sys.executable,
+              "scripts/run_build_plugin.py",
+              "--runuat",
+              r"""${{ inputs.runuat_path }}""",
+              "--package",
+              "build/BuildPlugin/Nozzle-${{ inputs.target_platform }}",
+              "--expect-layout",
+              "${{ inputs.expect_layout }}",
+          ]
+          if "${{ inputs.no_rocket }}" == "true":
+              command.append("--no-rocket")
+          subprocess.run(command, check=True)
+
+      - name: Upload asserted BuildPlugin package
+        uses: actions/upload-artifact@v4
+        with:
+          name: nozzle-unreal-buildplugin-${{ inputs.target_platform }}
+          path: build/BuildPlugin/Nozzle-${{ inputs.target_platform }}
