@@ -51,49 +51,35 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
       - name: Check static source shape first
-        run: python scripts/check_package_shape.py
+        run: python3 scripts/check_package_shape.py
 
       - name: Check native staging contract
-        run: python scripts/check_native_staging.py
+        run: python3 scripts/check_native_staging.py
 
       - name: Verify RunUAT path exists
-        shell: python
+        shell: bash
         run: |
-          from pathlib import Path
-          import sys
-
-          runuat_path = Path(r"""${{ inputs.runuat_path }}""")
-          if not runuat_path.is_file():
-              print(f"RunUAT path does not exist: {runuat_path}", file=sys.stderr)
-              sys.exit(1)
+          test -f "${{ inputs.runuat_path }}" || {
+            echo "RunUAT path does not exist: ${{ inputs.runuat_path }}" >&2
+            exit 1
+          }
 
       - name: Run BuildPlugin with package assertions
-        shell: python
+        shell: bash
         run: |
-          import subprocess
-          import sys
-
-          command = [
-              sys.executable,
-              "scripts/run_build_plugin.py",
-              "--runuat",
-              r"""${{ inputs.runuat_path }}""",
-              "--package",
-              "build/BuildPlugin/Nozzle-${{ inputs.target_platform }}",
-              "--target-platform",
-              "${{ inputs.target_platform }}",
-              "--expect-layout",
-              "${{ inputs.expect_layout }}",
-          ]
-          if "${{ inputs.no_rocket }}" == "true":
-              command.append("--no-rocket")
-          subprocess.run(command, check=True)
+          command=(
+            python3
+            scripts/run_build_plugin.py
+            --runuat "${{ inputs.runuat_path }}"
+            --package "build/BuildPlugin/Nozzle-${{ inputs.target_platform }}"
+            --target-platform "${{ inputs.target_platform }}"
+            --expect-layout "${{ inputs.expect_layout }}"
+          )
+          if [ "${{ inputs.no_rocket }}" = "true" ]; then
+            command+=(--no-rocket)
+          fi
+          "${command[@]}"
 
       - name: Upload asserted BuildPlugin package
         uses: actions/upload-artifact@v4
