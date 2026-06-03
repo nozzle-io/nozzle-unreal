@@ -28,6 +28,12 @@ DEV_SUBMODULE_PARTS = {
     "deps",
 }
 
+LOCAL_OUTPUT_PARTS = {
+    "build",
+    "cmake-build-debug",
+    "cmake-build-release",
+}
+
 REQUIRED_FILES = [
     "README.md",
     "LICENSE",
@@ -42,7 +48,9 @@ REQUIRED_FILES = [
     "scripts/check_native_staging.py",
     "scripts/package_source.py",
     "scripts/run_build_plugin.py",
+    "scripts/stage_native_nozzle.py",
     "Nozzle/Nozzle.uplugin",
+    "Nozzle/Config/FilterPlugin.ini",
     "Nozzle/Source/Nozzle/Nozzle.Build.cs",
     "Nozzle/Source/Nozzle/Public/NozzleDiagnostics.h",
     "Nozzle/Source/Nozzle/Public/NozzleRuntimeBlueprintLibrary.h",
@@ -121,6 +129,8 @@ def check_no_generated_dirs() -> None:
         relative = path.relative_to(ROOT)
         if any(part in DEV_SUBMODULE_PARTS for part in relative.parts):
             continue
+        if any(part in LOCAL_OUTPUT_PARTS for part in relative.parts):
+            continue
         if any(part in GENERATED_PARTS for part in relative.parts):
             fail(f"generated Unreal directory must not be committed: {relative}")
 
@@ -131,6 +141,8 @@ def check_no_suppressed_failures(paths: Iterable[Path]) -> None:
             continue
         relative = path.relative_to(ROOT)
         if any(part in DEV_SUBMODULE_PARTS for part in relative.parts):
+            continue
+        if any(part in LOCAL_OUTPUT_PARTS for part in relative.parts):
             continue
         if path.suffix not in {".yml", ".yaml", ".sh", ".py", ".md"}:
             continue
@@ -211,10 +223,10 @@ def check_build_files() -> None:
     require_text(third_party_build, "NozzleCore: WITH_NOZZLE_CORE=0")
     require_text(third_party_build, "nozzle_c.h")
     require_text(third_party_build, "PublicDelayLoadDLLs.Add(\"nozzle.dll\")")
-    require_text(third_party_build, "RuntimeDependencies.Add(RuntimeDependencyTargetPath, RuntimeLibraryPath)")
-    require_text(third_party_build, "$(PluginDir)/ThirdParty/nozzle/bin/Win64/nozzle.dll")
-    require_text(third_party_build, "$(PluginDir)/ThirdParty/nozzle/lib/Mac/libnozzle.dylib")
+    require_text(third_party_build, "RuntimeDependencies.Add(RuntimeLibraryPath)")
+    forbid_text(third_party_build, "RuntimeDependencies.Add(RuntimeDependencyTargetPath, RuntimeLibraryPath)")
     require_text(third_party_build, "libnozzle.dylib")
+    require_text(PLUGIN_ROOT / "Config" / "FilterPlugin.ini", "/ThirdParty/nozzle/...")
     require_text(PLUGIN_ROOT / "ThirdParty" / "nozzle" / "README.md", "intentionally empty")
 
 
@@ -379,6 +391,8 @@ def check_no_false_support_claims() -> None:
         relative = path.relative_to(ROOT)
         if any(part in DEV_SUBMODULE_PARTS for part in relative.parts):
             continue
+        if any(part in LOCAL_OUTPUT_PARTS for part in relative.parts):
+            continue
         text = path.read_text(encoding="utf-8")
         for line_number, line in enumerate(text.splitlines(), start=1):
             lowered = line.lower()
@@ -410,11 +424,16 @@ def check_docs() -> None:
     require_text(readme, "Do not use the default command as native-link evidence")
     require_text(readme, "--require <Mac|Win64> --inspect-deps")
     require_text(readme, "native_staging_mode")
+    require_text(readme, "build_native_payload")
+    require_text(readme, "scripts/stage_native_nozzle.py")
+    require_text(readme, "post-BuildPlugin packaged-payload check")
     require_text(readme, "NozzleCore: WITH_NOZZLE_CORE=1")
     require_text(ROOT / "docs" / "phase-0-feasibility.md", "What is not proven yet")
     require_text(ROOT / "docs" / "phase-0-feasibility.md", "package-root `Native/` is absent")
     require_text(ROOT / "docs" / "phase-0-feasibility.md", "default placeholder validation is not native-link evidence")
     require_text(ROOT / "docs" / "phase-0-feasibility.md", "native_staging_mode=require")
+    require_text(ROOT / "docs" / "phase-0-feasibility.md", "build_native_payload=true")
+    require_text(ROOT / "docs" / "phase-0-feasibility.md", "build/BuildPlugin/Nozzle-<target>/ThirdParty/nozzle")
     require_text(ROOT / "docs" / "runtime-smoke-matrix.md", "Unreal sender -> nozzle-mixer")
     require_text(ROOT / "docs" / "runtime-smoke-matrix.md", "MISSING")
     require_text(ROOT / "docs" / "macos-metal-smoke-protocol.md", "IOSurface backing proof")
@@ -444,7 +463,10 @@ def check_workflow() -> None:
     require_text(buildplugin_workflow, "fromJSON(inputs.runner_labels_json)")
     require_text(buildplugin_workflow, "scripts/run_build_plugin.py")
     require_text(buildplugin_workflow, "native_staging_mode")
+    require_text(buildplugin_workflow, "build_native_payload")
+    require_text(buildplugin_workflow, "python3 scripts/stage_native_nozzle.py --platform")
     require_text(buildplugin_workflow, "python3 scripts/check_native_staging.py --require")
+    require_text(buildplugin_workflow, "--staged-root \"build/BuildPlugin/Nozzle-${{ inputs.target_platform }}/ThirdParty/nozzle\"")
     require_text(buildplugin_workflow, "--inspect-deps")
     require_text(buildplugin_workflow, "--target-platform")
     require_text(buildplugin_workflow, "${{ inputs.target_platform }}")

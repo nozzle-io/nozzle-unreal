@@ -41,6 +41,11 @@ on:
         options:
           - placeholder
           - require
+      build_native_payload:
+        description: "Build and stage native nozzle payload from deps/nozzle before the staging check. Required for #139 evidence when binaries are not committed."
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -61,6 +66,10 @@ jobs:
 
       - name: Check static source shape first
         run: python3 scripts/check_package_shape.py
+
+      - name: Build staged native nozzle payload
+        if: ${{ inputs.build_native_payload }}
+        run: python3 scripts/stage_native_nozzle.py --platform "${{ inputs.target_platform }}"
 
       - name: Check native staging contract
         shell: bash
@@ -94,6 +103,15 @@ jobs:
             command+=(--no-rocket)
           fi
           "${command[@]}"
+
+      - name: Check packaged native staging contract
+        if: ${{ inputs.native_staging_mode == 'require' }}
+        shell: bash
+        run: |
+          python3 scripts/check_native_staging.py \
+            --staged-root "build/BuildPlugin/Nozzle-${{ inputs.target_platform }}/ThirdParty/nozzle" \
+            --require "${{ inputs.target_platform }}" \
+            --inspect-deps
 
       - name: Upload asserted BuildPlugin package
         uses: actions/upload-artifact@v4
