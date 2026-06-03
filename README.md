@@ -141,13 +141,15 @@ Engine-backed BuildPlugin validation, when an Unreal Engine install is available
 python3 scripts/run_build_plugin.py --runuat /path/to/Engine/Build/BatchFiles/RunUAT.sh --target-platform Win64 --package build/BuildPlugin/Nozzle-Win64
 ```
 
-The script fails if `RunUAT` cannot be found. A missing engine is a blocker, not a reason to relabel static CI as BuildPlugin coverage. Normal engine-backed evidence must pass `--target-platform Win64` or `--target-platform Mac`; the script then passes `-TargetPlatforms=<value>` to `RunUAT`, and binary-only package assertions require `Binaries/Win64/` or `Binaries/Mac/` instead of accepting any binary payload. Running without a pinned target requires the explicit diagnostic-only `--allow-runuat-default-target` opt-out. After `RunUAT` returns, the script asserts the package shape before printing the package tree: `Nozzle.uplugin` must exist, package-root `Native/` and development `deps/` are forbidden, generated scratch directories are rejected, and the plugin must match either the expected source layout or an explicitly requested binary-only layout.
+The script fails if `RunUAT` cannot be found. A missing engine is a blocker, not a reason to relabel static CI as BuildPlugin coverage. Normal engine-backed evidence must pass `--target-platform Win64` or `--target-platform Mac`; the script then passes `-TargetPlatforms=<value>` to `RunUAT`. After `RunUAT` returns, target-pinned evidence requires non-empty `Binaries/Win64/` or `Binaries/Mac/` even when the package also contains `Source/`. Binary-only packages are still validated against the selected target. Source-only package acceptance requires the explicit diagnostic-only `--allow-source-only-artifact` opt-out and is not #142 completion evidence. Running without a pinned target requires the explicit diagnostic-only `--allow-runuat-default-target` opt-out. The script asserts the package shape before printing the package tree: `Nozzle.uplugin` must exist, package-root `Native/` and development `deps/` are forbidden, generated scratch directories are rejected, required source files are checked when `Source/` exists, and target-specific binary evidence is checked unless source-only diagnostic mode is explicitly selected.
 
 Existing package assertion, useful for reviewing archived BuildPlugin output:
 
 ```bash
-python3 scripts/run_build_plugin.py --assert-package-only --package /path/to/Packaged/Nozzle --target-platform Win64 --expect-layout source
+python3 scripts/run_build_plugin.py --assert-package-only --package /path/to/Packaged/Nozzle --target-platform Win64 --expect-layout auto
 ```
+
+For an archived source-only package, add `--allow-source-only-artifact` and report it only as diagnostic evidence. Do not use that mode as #142 acceptance evidence.
 
 Manual GitHub Actions entry point:
 
@@ -155,7 +157,7 @@ Manual GitHub Actions entry point:
 Actions -> Unreal BuildPlugin -> Run workflow
 ```
 
-That workflow still requires a runner with Unreal Engine already installed and a valid `RunUAT` path. The `runner_labels_json` input is a JSON array, for example `["self-hosted","Windows","Unreal"]`, `["self-hosted","macOS","Unreal"]`, or `["windows-latest"]` for a hosted image that actually contains the requested engine. Third-party UE project-build Actions are wrappers around `RunUAT`; they do not remove the engine installation requirement.
+That workflow still requires a runner with Unreal Engine already installed and a valid `RunUAT` path. The `runner_labels_json` input is a JSON array, for example `["self-hosted","Windows","Unreal"]` or `["self-hosted","macOS","Unreal"]`. A hosted image is valid only if it is proven to contain the exact requested engine path. Third-party UE project-build Actions are wrappers around `RunUAT`; they do not remove the engine installation requirement.
 
 ## Runtime evidence required later
 
