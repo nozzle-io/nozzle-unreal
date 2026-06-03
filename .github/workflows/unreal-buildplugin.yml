@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       runner_labels_json:
-        description: 'JSON runner labels. Use ["self-hosted","Windows","Unreal"] or ["self-hosted","macOS","Unreal"] for Unreal runners.'
+        description: 'JSON labels for a self-hosted runner with Unreal Engine installed, e.g. ["self-hosted","Windows","Unreal"] or ["self-hosted","macOS","Unreal"].'
         required: true
-        default: '["windows-latest"]'
+        default: '["self-hosted","Windows","Unreal"]'
       runuat_path:
         description: "Path to Engine/Build/BatchFiles/RunUAT.bat/.sh/.command on the runner"
         required: true
@@ -100,3 +100,4 @@ jobs:
         with:
           name: nozzle-unreal-buildplugin-${{ inputs.target_platform }}
           path: build/BuildPlugin/Nozzle-${{ inputs.target_platform }}
+          if-no-files-found: error

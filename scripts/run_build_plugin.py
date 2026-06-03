@@ -174,7 +174,33 @@ def assert_binary_layout(package_dir: Path, target_platform: str | None) -> None
         fail("binary-only BuildPlugin layout has an empty Binaries/ directory")
 
 
-def assert_package_shape(package_dir: Path, expected_layout: str, target_platform: str | None) -> None:
+def assert_target_binary_evidence(package_dir: Path, target_platform: str) -> None:
+    target_binaries = package_dir / "Binaries" / target_platform
+    if not target_binaries.is_dir():
+        fail(f"target-pinned BuildPlugin evidence requires non-empty Binaries/{target_platform}/")
+    if not any(path.is_file() for path in target_binaries.rglob("*")):
+        fail(f"target-pinned BuildPlugin evidence requires non-empty Binaries/{target_platform}/")
+
+
+def assert_source_layout_with_target_evidence(package_dir: Path, target_platform: str | None, allow_source_only_artifact: bool) -> None:
+    assert_source_layout(package_dir)
+    if target_platform is None:
+        print("BuildPlugin package assertion: source layout")
+        return
+    if allow_source_only_artifact:
+        print("BuildPlugin package assertion: source layout")
+        print("source-only BuildPlugin artifact assertion passed; this is diagnostic and is not #142 acceptance evidence")
+        return
+    assert_target_binary_evidence(package_dir, target_platform)
+    print(f"BuildPlugin package assertion: source layout with target binary evidence for {target_platform}")
+
+
+def assert_package_shape(
+    package_dir: Path,
+    expected_layout: str,
+    target_platform: str | None,
+    allow_source_only_artifact: bool,
+) -> None:
     if not package_dir.is_dir():
         fail(f"BuildPlugin did not create the package directory: {package_dir}")
 
@@ -182,8 +208,7 @@ def assert_package_shape(package_dir: Path, expected_layout: str, target_platfor
     check_no_forbidden_package_paths(package_dir)
 
     if expected_layout == "source":
-        assert_source_layout(package_dir)
-        print("BuildPlugin package assertion: source layout")
+        assert_source_layout_with_target_evidence(package_dir, target_platform, allow_source_only_artifact)
     elif expected_layout == "binary":
         assert_binary_layout(package_dir, target_platform)
         if target_platform is None:
@@ -192,8 +217,7 @@ def assert_package_shape(package_dir: Path, expected_layout: str, target_platfor
             print(f"BuildPlugin package assertion: binary layout for {target_platform}")
     else:
         if (package_dir / "Source").is_dir():
-            assert_source_layout(package_dir)
-            print("BuildPlugin package assertion: source layout")
+            assert_source_layout_with_target_evidence(package_dir, target_platform, allow_source_only_artifact)
         else:
             assert_binary_layout(package_dir, target_platform)
             if target_platform is None:
@@ -228,6 +252,7 @@ def main() -> None:
     parser.add_argument("--no-rocket", action="store_true", help="Do not pass -Rocket to BuildPlugin")
     parser.add_argument("--expect-layout", choices=("auto", "source", "binary"), default="auto")
     parser.add_argument("--assert-package-only", action="store_true", help="Skip RunUAT and assert an existing package directory")
+    parser.add_argument("--allow-source-only-artifact", action="store_true", help="Diagnostic-only mode: allow source layout without Binaries/<target_platform>/; this is not #142 acceptance evidence")
     args = parser.parse_args()
 
     if not PLUGIN_DESCRIPTOR.is_file():
@@ -235,7 +260,7 @@ def main() -> None:
 
     package_dir = args.package if args.package.is_absolute() else ROOT / args.package
     if args.assert_package_only:
-        assert_package_shape(package_dir, args.expect_layout, args.target_platform)
+        assert_package_shape(package_dir, args.expect_layout, args.target_platform, args.allow_source_only_artifact)
         print_package_tree(package_dir)
         return
     if args.target_platform is None and not args.allow_runuat_default_target:
@@ -265,7 +290,7 @@ def main() -> None:
     print(" ".join(command))
     subprocess.run(command, cwd=ROOT, check=True)
 
-    assert_package_shape(package_dir, args.expect_layout, args.target_platform)
+    assert_package_shape(package_dir, args.expect_layout, args.target_platform, args.allow_source_only_artifact)
     print_package_tree(package_dir)
 
 
