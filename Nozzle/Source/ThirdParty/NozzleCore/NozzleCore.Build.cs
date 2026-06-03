@@ -1,3 +1,4 @@
+using System;
 using System.IO;
 using UnrealBuildTool;
 
@@ -41,10 +42,12 @@ public class NozzleCore : ModuleRules
             }
             RuntimeDependencies.Add(RuntimeDependencyTargetPath, RuntimeLibraryPath);
             PublicDefinitions.Add("WITH_NOZZLE_CORE=1");
+            Console.WriteLine("NozzleCore: WITH_NOZZLE_CORE=1 TargetPlatform={0} IncludeDirectory={1} LibraryPath={2} RuntimeLibraryPath={3}", Target.Platform, IncludeDirectory, LibraryPath, RuntimeLibraryPath);
         }
         else
         {
             PublicDefinitions.Add("WITH_NOZZLE_CORE=0");
+            Console.WriteLine("NozzleCore: WITH_NOZZLE_CORE=0 TargetPlatform={0} HasStagedHeaders={1} HasStagedLibrary={2} HasStagedRuntimeLibrary={3}", Target.Platform, HasStagedHeaders, HasStagedLibrary, HasStagedRuntimeLibrary);
         }
     }
 }

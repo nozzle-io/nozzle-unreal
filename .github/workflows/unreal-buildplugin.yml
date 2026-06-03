@@ -33,6 +33,14 @@ on:
         required: true
         default: false
         type: boolean
+      native_staging_mode:
+        description: "placeholder keeps #142-style source/engine checks; require is mandatory for #139 native-link evidence"
+        required: true
+        default: "placeholder"
+        type: choice
+        options:
+          - placeholder
+          - require
 
 permissions:
   contents: read
@@ -55,7 +63,13 @@ jobs:
         run: python3 scripts/check_package_shape.py
 
       - name: Check native staging contract
-        run: python3 scripts/check_native_staging.py
+        shell: bash
+        run: |
+          if [ "${{ inputs.native_staging_mode }}" = "require" ]; then
+            python3 scripts/check_native_staging.py --require "${{ inputs.target_platform }}" --inspect-deps
+          else
+            python3 scripts/check_native_staging.py
+          fi
 
       - name: Verify RunUAT path exists
         shell: bash

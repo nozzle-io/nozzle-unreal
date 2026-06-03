@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import fnmatch
 import hashlib
+import re
 import shutil
 import subprocess
 import sys
@@ -61,6 +62,8 @@ WIN64_SYSTEM_DLL_PATTERNS = (
     "ws2_32.dll",
     "bcrypt.dll",
     "crypt32.dll",
+    "d3d11.dll",
+    "dxgi.dll",
     "dbghelp.dll",
     "iphlpapi.dll",
     "msvcp*.dll",
@@ -92,6 +95,12 @@ class FileEvidence:
     path: Path
     size: int
     sha256: str
+
+
+@dataclass(frozen=True)
+class MacosDependencySlice:
+    architecture: str | None
+    dependencies: list[str]
 
 
 def make_contracts(staged_root: Path = DEFAULT_STAGED_ROOT) -> dict[str, PlatformContract]:
@@ -166,18 +175,46 @@ def print_file_evidence(evidence: FileEvidence) -> None:
     print(f"  {relative(evidence.path)} size={evidence.size} sha256={evidence.sha256}")
 
 
-def parse_macos_otool_output(output: str) -> list[str]:
-    dependencies: list[str] = []
+def parse_macos_otool_header(line: str) -> str | None | bool:
+    if not line.endswith(":"):
+        return False
+    header = line[:-1]
+    match = re.search(r" \(architecture ([^)]+)\)$", header)
+    if match:
+        return match.group(1)
+    return None
+
+
+def parse_macos_otool_output(output: str) -> list[MacosDependencySlice]:
+    slices: list[MacosDependencySlice] = []
+    current_architecture: str | None = None
+    current_dependencies: list[str] = []
+    saw_header = False
+
+    def flush_current() -> None:
+        nonlocal current_dependencies
+        if current_dependencies:
+            slices.append(MacosDependencySlice(architecture=current_architecture, dependencies=current_dependencies))
+            current_dependencies = []
+
     for raw_line in output.splitlines():
         line = raw_line.strip()
         if not line:
             continue
-        if not dependencies and line.endswith(":"):
+        parsed_header = parse_macos_otool_header(line)
+        if parsed_header is not False:
+            flush_current()
+            current_architecture = parsed_header
+            saw_header = True
             continue
         dependency = line.split(" (", 1)[0].strip()
         if dependency:
-            dependencies.append(dependency)
-    return dependencies
+            if not saw_header and not slices:
+                current_architecture = None
+            current_dependencies.append(dependency)
+
+    flush_current()
+    return slices
 
 
 def macos_is_system_dependency(dependency: str) -> bool:
@@ -192,28 +229,36 @@ def staged_peer_for_dependency(contract: PlatformContract, dependency: str) -> P
     return contract.runtime_library.parent / Path(dependency).name
 
 
-def validate_macos_dependencies(contract: PlatformContract, dependencies: list[str]) -> list[str]:
+def describe_macos_slice(contract: PlatformContract, dependency_slice: MacosDependencySlice) -> str:
+    if dependency_slice.architecture is None:
+        return contract.name
+    return f"{contract.name} {dependency_slice.architecture}"
+
+
+def validate_macos_dependency_slice(contract: PlatformContract, dependency_slice: MacosDependencySlice) -> list[str]:
     errors: list[str] = []
+    label = describe_macos_slice(contract, dependency_slice)
+    dependencies = dependency_slice.dependencies
     if not dependencies:
-        return [f"{contract.name} dependency inspection returned no install name/dependencies"]
+        return [f"{label} dependency inspection returned no install name/dependencies"]
 
     install_name = dependencies[0]
     if not macos_is_package_load_path(install_name):
         errors.append(
-            f"{contract.name} install name must be package-loadable "
+            f"{label} install name must be package-loadable "
             f"({', '.join(MACOS_PACKAGE_LOAD_PREFIXES)}), got {install_name}"
         )
     if install_name.startswith(MACOS_BUILD_PATH_PREFIXES) or (install_name.startswith("/") and not macos_is_system_dependency(install_name)):
-        errors.append(f"{contract.name} install name points at a non-package absolute path: {install_name}")
+        errors.append(f"{label} install name points at a non-package absolute path: {install_name}")
 
     for dependency in dependencies[1:]:
         if dependency.startswith(MACOS_BUILD_PATH_PREFIXES):
-            errors.append(f"{contract.name} dependency points at a build-machine path: {dependency}")
+            errors.append(f"{label} dependency points at a build-machine path: {dependency}")
             continue
         if macos_is_system_dependency(dependency):
             continue
         if dependency.startswith("/"):
-            errors.append(f"{contract.name} dependency is an unstaged absolute non-system path: {dependency}")
+            errors.append(f"{label} dependency is an unstaged absolute non-system path: {dependency}")
             continue
         if macos_is_package_load_path(dependency):
             staged_peer = staged_peer_for_dependency(contract, dependency)
@@ -221,10 +266,19 @@ def validate_macos_dependencies(contract: PlatformContract, dependencies: list[s
             if not isinstance(peer_status, FileEvidence):
                 if peer_status is None:
                     peer_status = f"{relative(staged_peer)} is missing"
-                errors.append(f"{contract.name} dependency {dependency} is not staged beside the plugin: {peer_status}")
+                errors.append(f"{label} dependency {dependency} is not staged beside the plugin: {peer_status}")
             continue
-        errors.append(f"{contract.name} dependency uses an undocumented load path: {dependency}")
+        errors.append(f"{label} dependency uses an undocumented load path: {dependency}")
 
+    return errors
+
+
+def validate_macos_dependencies(contract: PlatformContract, dependency_slices: list[MacosDependencySlice]) -> list[str]:
+    if not dependency_slices:
+        return [f"{contract.name} dependency inspection returned no architecture/install-name records"]
+    errors: list[str] = []
+    for dependency_slice in dependency_slices:
+        errors.extend(validate_macos_dependency_slice(contract, dependency_slice))
     return errors
 
 
@@ -286,11 +340,14 @@ def inspect_dependencies(contract: PlatformContract) -> None:
         )
 
     if contract.name == "Mac":
-        dependencies = parse_macos_otool_output(result.stdout)
+        dependency_slices = parse_macos_otool_output(result.stdout)
         print(f"{contract.name} parsed dependencies:")
-        for dependency in dependencies:
-            print(f"  {dependency}")
-        errors = validate_macos_dependencies(contract, dependencies)
+        for dependency_slice in dependency_slices:
+            architecture = dependency_slice.architecture or "single"
+            print(f"  architecture={architecture}")
+            for dependency in dependency_slice.dependencies:
+                print(f"    {dependency}")
+        errors = validate_macos_dependencies(contract, dependency_slices)
     elif contract.name == "Win64":
         dependencies = parse_win64_dumpbin_output(result.stdout)
         print(f"{contract.name} parsed dependencies:")

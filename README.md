@@ -169,6 +169,8 @@ Actions -> Unreal BuildPlugin -> Run workflow
 
 That workflow still requires a runner with Unreal Engine already installed and a valid `RunUAT` path. The `runner_labels_json` input is a JSON array, for example `["self-hosted","Windows","Unreal"]` or `["self-hosted","macOS","Unreal"]`. A hosted image is valid only if it is proven to contain the exact requested engine path. Third-party UE project-build Actions are wrappers around `RunUAT`; they do not remove the engine installation requirement.
 
+For #139 native-link evidence, the workflow input `native_staging_mode` must be set to `require`. The default `placeholder` mode is only for source/engine boundary checks and can still prove `WITH_NOZZLE_CORE=0`; it is not native nozzle link evidence. A valid #139 workflow run must show both the strict staging command and the `NozzleCore: WITH_NOZZLE_CORE=1` line emitted by `NozzleCore.Build.cs`.
+
 ## Runtime evidence required later
 
 See `docs/runtime-smoke-matrix.md`. Minimum proof before any runtime support claim:

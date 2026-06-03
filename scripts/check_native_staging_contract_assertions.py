@@ -113,28 +113,61 @@ def check_macos_dependency_parser() -> None:
         staged_root = Path(directory)
         write_valid_mac_payload(staged_root)
         contract = staging.make_contracts(staged_root)["Mac"]
-        output = f"""{contract.runtime_library}:
+        single_arch_output = f"""{contract.runtime_library}:
     @rpath/libnozzle.dylib (compatibility version 0.0.0, current version 0.0.0)
     /usr/lib/libc++.1.dylib (compatibility version 1.0.0, current version 1700.0.0)
     @rpath/libhelper.dylib (compatibility version 0.0.0, current version 0.0.0)
 """
-        dependencies = staging.parse_macos_otool_output(output)
-        errors = staging.validate_macos_dependencies(contract, dependencies)
+        dependency_slices = staging.parse_macos_otool_output(single_arch_output)
+        if len(dependency_slices) != 1 or dependency_slices[0].architecture is not None:
+            fail(f"unexpected single-arch macOS dependency parse result: {dependency_slices}")
+        errors = staging.validate_macos_dependencies(contract, dependency_slices)
         if not any("libhelper.dylib" in error for error in errors):
             fail(f"macOS unstaged @rpath dependency was not rejected: {errors}")
         write_file(staged_root / "lib" / "Mac" / "libhelper.dylib", b"fake-helper")
-        errors = staging.validate_macos_dependencies(contract, dependencies)
+        errors = staging.validate_macos_dependencies(contract, dependency_slices)
         if errors:
             fail(f"macOS staged @rpath dependency was rejected: {errors}")
 
-        bad_install_name = staging.parse_macos_otool_output(
-            f"""{contract.runtime_library}:
+        universal_output = f"""{contract.runtime_library} (architecture x86_64):
+    @rpath/libnozzle.dylib (compatibility version 0.0.0, current version 0.0.0)
+    /usr/lib/libc++.1.dylib (compatibility version 1.0.0, current version 1700.0.0)
+{contract.runtime_library} (architecture arm64):
+    @rpath/libnozzle.dylib (compatibility version 0.0.0, current version 0.0.0)
+    /usr/lib/libc++.1.dylib (compatibility version 1.0.0, current version 1700.0.0)
+"""
+        dependency_slices = staging.parse_macos_otool_output(universal_output)
+        architectures = [dependency_slice.architecture for dependency_slice in dependency_slices]
+        if architectures != ["x86_64", "arm64"]:
+            fail(f"unexpected universal macOS architecture parse result: {architectures}")
+        errors = staging.validate_macos_dependencies(contract, dependency_slices)
+        if errors:
+            fail(f"valid universal macOS dependencies were rejected: {errors}")
+
+        bad_arm64_install_name = staging.parse_macos_otool_output(
+            f"""{contract.runtime_library} (architecture x86_64):
+    @rpath/libnozzle.dylib (compatibility version 0.0.0, current version 0.0.0)
+    /usr/lib/libc++.1.dylib (compatibility version 1.0.0, current version 1700.0.0)
+{contract.runtime_library} (architecture arm64):
     /Users/build/libnozzle.dylib (compatibility version 0.0.0, current version 0.0.0)
 """
         )
-        errors = staging.validate_macos_dependencies(contract, bad_install_name)
-        if not any("install name" in error for error in errors):
-            fail(f"macOS absolute install name was not rejected: {errors}")
+        errors = staging.validate_macos_dependencies(contract, bad_arm64_install_name)
+        if not any("arm64 install name" in error for error in errors):
+            fail(f"macOS per-architecture absolute install name was not rejected: {errors}")
+
+        unstaged_arm64_dependency = staging.parse_macos_otool_output(
+            f"""{contract.runtime_library} (architecture x86_64):
+    @rpath/libnozzle.dylib (compatibility version 0.0.0, current version 0.0.0)
+    /usr/lib/libc++.1.dylib (compatibility version 1.0.0, current version 1700.0.0)
+{contract.runtime_library} (architecture arm64):
+    @rpath/libnozzle.dylib (compatibility version 0.0.0, current version 0.0.0)
+    @rpath/libmissing.dylib (compatibility version 0.0.0, current version 0.0.0)
+"""
+        )
+        errors = staging.validate_macos_dependencies(contract, unstaged_arm64_dependency)
+        if not any("arm64 dependency @rpath/libmissing.dylib" in error for error in errors):
+            fail(f"macOS per-architecture unstaged dependency was not rejected: {errors}")
 
 
 def check_win64_dependency_parser() -> None:
@@ -150,13 +183,16 @@ File Type: DLL
   Image has the following dependencies:
 
     KERNEL32.dll
+    d3d11.dll
+    dxgi.dll
     VCRUNTIME140.dll
     helper.dll
 
   Summary
 """
         dependencies = staging.parse_win64_dumpbin_output(output)
-        if dependencies != ["KERNEL32.dll", "VCRUNTIME140.dll", "helper.dll"]:
+        expected_dependencies = ["KERNEL32.dll", "d3d11.dll", "dxgi.dll", "VCRUNTIME140.dll", "helper.dll"]
+        if dependencies != expected_dependencies:
             fail(f"unexpected Win64 dependency parse result: {dependencies}")
         errors = staging.validate_win64_dependencies(contract, dependencies)
         if not any("helper.dll" in error for error in errors):
