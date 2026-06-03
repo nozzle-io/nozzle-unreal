@@ -19,7 +19,7 @@ What is not proven yet:
 - UHT/reflection generation.
 - nozzle native library linking inside Unreal.
 - native nozzle library linking in the CMake bridge; the current CMake target is compile-only.
-- staged native nozzle payloads: `scripts/check_native_staging.py` rejects partial staging and can require platform payloads plus dependency inspection, but no staged nozzle binaries are present in this scaffold.
+- staged native nozzle payloads: `scripts/check_native_staging.py` rejects partial staging and can require platform payloads plus parsed dependency inspection, but no staged nozzle binaries are present in this scaffold. Strict evidence must use `--require <Mac|Win64> --inspect-deps`; default placeholder validation is not native-link evidence.
 - safe render-thread access to `FRHITexture::GetNativeResource()` under either D3D11 or Metal. The source now extracts D3D11 device/context from the native texture and Metal device from `id<MTLTexture>`, routes render commands through a thread-safe state object instead of capturing the component, exposes last render-operation diagnostics plus a monotonically increasing render sequence for smoke tests, and checks cancellation before publish/copy, but none of that is engine-executed evidence.
 - `ID3D11Texture2D*` lifetime/synchronization.
 - Metal `id<MTLTexture>` lifetime/synchronization.

@@ -105,6 +105,16 @@ python3 scripts/check_native_staging.py --require Win64 --inspect-deps
 ```
 
 The default command accepts the current empty placeholder state but fails on partial staging. The `--require` mode is for a runner that is supposed to prove native linking; it fails if any required header, link library, runtime library, or dependency-inspection tool is missing.
+In `--require` mode, native-link evidence is intentionally rejected unless `--inspect-deps` is also present. The checker validates that staged paths are real non-empty files, records size and SHA-256 evidence, checks that `nozzle_c.h` exposes the expected public C API surface, and parses platform dependency output instead of treating `otool`/`dumpbin` exit status as proof. On macOS, the dylib install name must use a package-loadable path such as `@rpath/`, `@loader_path/`, or `@executable_path/`; absolute build-machine paths and unstaged non-system dylib dependencies fail. On Win64, `dumpbin /DEPENDENTS` output is parsed and unexpected plugin-private DLL dependencies must be staged beside `nozzle.dll`.
+
+Do not use the default command as native-link evidence. A real #139 evidence run needs the target-pinned strict checker (`--require <Mac|Win64> --inspect-deps`) plus Unreal engine compile/link output:
+
+```bash
+python3 scripts/check_native_staging.py --require Mac --inspect-deps
+python3 scripts/run_build_plugin.py --runuat /path/to/Engine/Build/BatchFiles/RunUAT.sh --target-platform Mac --package build/BuildPlugin/Nozzle-Mac
+```
+
+or the equivalent Win64 target. If the BuildPlugin log does not prove `WITH_NOZZLE_CORE=1`, the native staging/link claim is still unproven.
 
 ## Validation commands
 

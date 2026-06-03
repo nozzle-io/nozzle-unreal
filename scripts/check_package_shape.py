@@ -37,6 +37,7 @@ REQUIRED_FILES = [
     ".github/workflows/unreal-buildplugin.yml",
     "CMakeLists.txt",
     "scripts/check_build_plugin_package_assertions.py",
+    "scripts/check_native_staging_contract_assertions.py",
     "scripts/check_package_shape.py",
     "scripts/check_native_staging.py",
     "scripts/package_source.py",
@@ -404,8 +405,11 @@ def check_docs() -> None:
     require_text(readme, "macOS + Metal")
     require_text(readme, "plugin-tree native bridge")
     require_text(readme, "BuildPlugin/UHT is still not proven")
+    require_text(readme, "Do not use the default command as native-link evidence")
+    require_text(readme, "--require <Mac|Win64> --inspect-deps")
     require_text(ROOT / "docs" / "phase-0-feasibility.md", "What is not proven yet")
     require_text(ROOT / "docs" / "phase-0-feasibility.md", "package-root `Native/` is absent")
+    require_text(ROOT / "docs" / "phase-0-feasibility.md", "default placeholder validation is not native-link evidence")
     require_text(ROOT / "docs" / "runtime-smoke-matrix.md", "Unreal sender -> nozzle-mixer")
     require_text(ROOT / "docs" / "runtime-smoke-matrix.md", "MISSING")
     require_text(ROOT / "docs" / "macos-metal-smoke-protocol.md", "IOSurface backing proof")
@@ -418,6 +422,7 @@ def check_workflow() -> None:
     buildplugin_workflow = ROOT / ".github" / "workflows" / "unreal-buildplugin.yml"
     require_text(workflow, "python3 scripts/check_package_shape.py")
     require_text(workflow, "python3 scripts/check_native_staging.py")
+    require_text(workflow, "python3 scripts/check_native_staging_contract_assertions.py")
     require_text(workflow, "python3 scripts/check_build_plugin_package_assertions.py")
     require_text(workflow, "python3 scripts/package_source.py")
     require_text(workflow, "cmake -S . -B build/native-ci")
