@@ -2,8 +2,6 @@
 
 #include <cstdint>
 
-#include <nozzle/nozzle_c.h>
-
 #ifndef NOZZLE_UNREAL_NATIVE_TARGET_WIN64
 #define NOZZLE_UNREAL_NATIVE_TARGET_WIN64 0
 #endif
@@ -22,6 +20,56 @@
 
 #ifndef NOZZLE_UNREAL_NATIVE_WITH_NOZZLE_CORE
 #define NOZZLE_UNREAL_NATIVE_WITH_NOZZLE_CORE 0
+#endif
+
+#if NOZZLE_UNREAL_NATIVE_WITH_NOZZLE_CORE
+#include <nozzle/nozzle_c.h>
+#else
+typedef struct NozzleSender NozzleSender;
+typedef struct NozzleReceiver NozzleReceiver;
+typedef struct NozzleFrame NozzleFrame;
+
+typedef enum NozzleErrorCode {
+    NOZZLE_OK = 0,
+    NOZZLE_ERROR_INVALID_ARGUMENT = 2,
+    NOZZLE_ERROR_UNSUPPORTED_BACKEND = 3,
+} NozzleErrorCode;
+
+typedef enum NozzleBackendType {
+    NOZZLE_BACKEND_D3D11 = 1,
+    NOZZLE_BACKEND_METAL = 2,
+} NozzleBackendType;
+
+typedef enum NozzleTextureFormat {
+    NOZZLE_FORMAT_BGRA8_UNORM = 5,
+} NozzleTextureFormat;
+
+typedef enum NozzleReceiveMode {
+    NOZZLE_RECEIVE_LATEST_ONLY = 0,
+} NozzleReceiveMode;
+
+#define NOZZLE_FALLBACK_NONE 0u
+
+typedef struct NozzleNativeDevice {
+    NozzleBackendType backend;
+    void *device;
+    void *context;
+} NozzleNativeDevice;
+
+typedef struct NozzleSenderDesc {
+    const char *name;
+    const char *application_name;
+    std::uint32_t ring_buffer_size;
+    int allow_format_fallback;
+    std::uint32_t fallback_flags;
+    int fallback_flags_valid;
+} NozzleSenderDesc;
+
+typedef struct NozzleReceiverDesc {
+    const char *name;
+    const char *application_name;
+    NozzleReceiveMode receive_mode;
+} NozzleReceiverDesc;
 #endif
 
 namespace nozzle_unreal_native {

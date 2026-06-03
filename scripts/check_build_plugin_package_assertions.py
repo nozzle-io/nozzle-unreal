@@ -89,6 +89,7 @@ def main() -> None:
         source_correct = root / "source-correct"
         write_source_layout(source_correct)
         write_binary(source_correct, "Win64", "Nozzle.dll")
+        write_file(source_correct / "Intermediate" / "Build" / "Win64" / "Nozzle.uhtmanifest", "RunUAT fixture\n")
         require_success(
             run_assertion(source_correct, "--expect-layout", "auto", "--target-platform", "Win64"),
             "BuildPlugin package assertion: source layout with target binary evidence for Win64",

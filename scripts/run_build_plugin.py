@@ -28,7 +28,6 @@ REPOSITORY_GENERATED_PARTS = {
 
 PACKAGE_FORBIDDEN_PARTS = {
     "DerivedDataCache",
-    "Intermediate",
     "Saved",
 }
 
