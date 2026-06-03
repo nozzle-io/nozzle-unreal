@@ -76,9 +76,35 @@ def stage_mac(build_root: Path) -> None:
     copy_file(install_root / "lib" / "libnozzle.dylib", STAGED_ROOT / "lib" / "Mac" / "libnozzle.dylib")
 
 
+def stage_win64(build_root: Path) -> None:
+    if host_platform.system() != "Windows":
+        fail("Win64 native staging must run on Windows")
+
+    install_root = build_root / "install"
+    configure_command = [
+        "cmake",
+        "-S",
+        str(DEPS_NOZZLE),
+        "-B",
+        str(build_root),
+        "-DBUILD_SHARED_LIBS=ON",
+        "-DNOZZLE_BUILD_EXAMPLES=OFF",
+        "-DNOZZLE_BUILD_TESTS=OFF",
+        "-DNOZZLE_INSTALL=ON",
+        "-DNOZZLE_STRICT_NO_EXCEPTIONS=ON",
+        f"-DCMAKE_INSTALL_PREFIX={install_root}",
+    ]
+    run(configure_command)
+    run(["cmake", "--build", str(build_root), "--target", "install", "--config", "Release"])
+
+    copy_file(install_root / "include" / "nozzle" / "nozzle_c.h", STAGED_ROOT / "include" / "nozzle" / "nozzle_c.h")
+    copy_file(install_root / "lib" / "nozzle.lib", STAGED_ROOT / "lib" / "Win64" / "nozzle.lib")
+    copy_file(install_root / "bin" / "nozzle.dll", STAGED_ROOT / "bin" / "Win64" / "nozzle.dll")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--platform", choices=("Mac",), required=True)
+    parser.add_argument("--platform", choices=("Mac", "Win64"), required=True)
     parser.add_argument("--build-dir", type=Path, default=ROOT / "build" / "stage-native-nozzle")
     args = parser.parse_args()
 
@@ -89,6 +115,8 @@ def main() -> None:
 
     if args.platform == "Mac":
         stage_mac(build_root)
+    elif args.platform == "Win64":
+        stage_win64(build_root)
     else:
         fail(f"unsupported platform: {args.platform}")
 

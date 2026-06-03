@@ -101,6 +101,7 @@ Native staging contract check:
 ```bash
 python3 scripts/check_native_staging.py
 python3 scripts/stage_native_nozzle.py --platform Mac
+python3 scripts/stage_native_nozzle.py --platform Win64
 python3 scripts/check_native_staging.py --require Mac --inspect-deps
 python3 scripts/check_native_staging.py --require Win64 --inspect-deps
 ```
