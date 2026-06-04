@@ -24,17 +24,37 @@ For each host mode (`Editor PIE`, `Packaged Development`) and each size
 
 1. Unreal sender -> `nozzle-viewer`.
 2. Unreal sender -> `nozzle-mixer`.
-3. `nozzle-viewer` or `nozzle-mixer` -> Unreal receiver/material.
+3. `nozzle-viewer` -> Unreal receiver/material.
+4. `nozzle-mixer` -> Unreal receiver/material.
+
+The receiver/material rows are intentionally split. A `nozzle-viewer` source
+and a `nozzle-mixer` output source exercise different producer behavior; do
+not collapse them into a combined "viewer or mixer" row when recording PASS
+evidence.
 
 ## Evidence fields per row
 
 - Command line or editor launch path.
 - RHI confirmation showing Metal.
 - Unreal render target size and native Metal texture format.
-- IOSurface backing proof for the source or target texture where required.
-- Synchronization behavior and where GPU work is ordered.
+- Native Metal texture details:
+  - `MTLPixelFormat`.
+  - width and height.
+  - `storageMode`.
+  - `usage` flags where observable.
+  - whether the texture pointer came directly from `FRHITexture::GetNativeResource()` or from an intermediate texture.
+- IOSurface backing proof for the source or target texture where required. A PASS row must state exactly one of:
+  - the Unreal source/target `id<MTLTexture>` itself is IOSurface-backed, with non-null IOSurface proof and an IOSurface ID;
+  - the plugin copies through a named IOSurface-backed intermediate texture, with the transfer mode documented;
+  - the row remains MISSING/FAIL because the tested texture is not cross-process shareable.
+- Synchronization boundary. A PASS row must name the actual ordering mechanism:
+  - command buffer completion handler or wait;
+  - fence or shared event;
+  - explicit flush/blit completion;
+  - or a documented reason why the tested path is already ordered.
 - Sender/receiver names.
 - Last render diagnostics sequence before and after the row.
+- Multi-frame sequence evidence proving the receiver is not showing a stale frame.
 - Screenshot or captured frame for the receiver side.
 - Dimensions observed by the receiver.
 - Vertical orientation: no flip / flip with proof.
@@ -49,3 +69,18 @@ For each host mode (`Editor PIE`, `Packaged Development`) and each size
 Do not infer support from CMake Metal compile checks. If IOSurface backing,
 texture lifetime, synchronization, channel order, or origin cannot be proven,
 leave the row MISSING/FAIL and split a focused bug.
+
+## Test pattern requirement
+
+Every PASS row must use a non-symmetric source image or generated test pattern.
+The pattern must include:
+
+- distinct visual labels or colors in all four corners;
+- separated red and blue regions;
+- a deliberate alpha patch over a visible background;
+- a visible size/orientation cue that differentiates `320x240` from `641x479`;
+- a frame counter or changing marker for stale-frame detection.
+
+A symmetric checkerboard, solid color, or single screenshot without a changing
+frame marker is not enough to prove no vertical flip, no R/B swap, alpha
+behavior, or synchronization correctness.
