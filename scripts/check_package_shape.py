@@ -43,6 +43,8 @@ REQUIRED_FILES = [
     ".github/workflows/unreal-buildplugin.yml",
     "CMakeLists.txt",
     "scripts/check_build_plugin_package_assertions.py",
+    "scripts/check_buildplugin_module_dependencies.py",
+    "scripts/check_buildplugin_module_dependency_assertions.py",
     "scripts/check_native_staging_contract_assertions.py",
     "scripts/check_package_shape.py",
     "scripts/check_native_staging.py",
@@ -448,6 +450,7 @@ def check_workflow() -> None:
     require_text(workflow, "python3 scripts/check_native_staging.py")
     require_text(workflow, "python3 scripts/check_native_staging_contract_assertions.py")
     require_text(workflow, "python3 scripts/check_build_plugin_package_assertions.py")
+    require_text(workflow, "python3 scripts/check_buildplugin_module_dependency_assertions.py")
     require_text(workflow, "python3 scripts/package_source.py")
     require_text(workflow, "cmake -S . -B build/native-ci")
     require_text(workflow, "NOZZLE_UNREAL_NATIVE_WITH_NOZZLE_CORE=OFF")
@@ -467,6 +470,8 @@ def check_workflow() -> None:
     require_text(buildplugin_workflow, "python3 scripts/stage_native_nozzle.py --platform")
     require_text(buildplugin_workflow, "python3 scripts/check_native_staging.py --require")
     require_text(buildplugin_workflow, "--staged-root \"build/BuildPlugin/Nozzle-${{ inputs.target_platform }}/ThirdParty/nozzle\"")
+    require_text(buildplugin_workflow, "python3 scripts/check_buildplugin_module_dependencies.py")
+    require_text(buildplugin_workflow, "--package-root \"build/BuildPlugin/Nozzle-${{ inputs.target_platform }}\"")
     require_text(buildplugin_workflow, "--inspect-deps")
     require_text(buildplugin_workflow, "--target-platform")
     require_text(buildplugin_workflow, "${{ inputs.target_platform }}")

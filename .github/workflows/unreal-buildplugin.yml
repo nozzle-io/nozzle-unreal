@@ -113,6 +113,14 @@ jobs:
             --require "${{ inputs.target_platform }}" \
             --inspect-deps
 
+      - name: Check BuildPlugin module dependencies
+        if: ${{ inputs.native_staging_mode == 'require' && inputs.target_platform == 'Mac' }}
+        shell: bash
+        run: |
+          python3 scripts/check_buildplugin_module_dependencies.py \
+            --package-root "build/BuildPlugin/Nozzle-${{ inputs.target_platform }}" \
+            --target-platform "${{ inputs.target_platform }}"
+
       - name: Upload asserted BuildPlugin package
         uses: actions/upload-artifact@v4
         with:

@@ -114,9 +114,11 @@ Do not use the default command as native-link evidence. A real #139 evidence run
 ```bash
 python3 scripts/check_native_staging.py --require Mac --inspect-deps
 python3 scripts/run_build_plugin.py --runuat /path/to/Engine/Build/BatchFiles/RunUAT.sh --target-platform Mac --package build/BuildPlugin/Nozzle-Mac
+python3 scripts/check_buildplugin_module_dependencies.py --package-root build/BuildPlugin/Nozzle-Mac --target-platform Mac
 ```
 
 or the equivalent Win64 target. If the BuildPlugin log does not prove `WITH_NOZZLE_CORE=1`, the native staging/link claim is still unproven.
+On Mac, native-link evidence also needs the BuildPlugin artifact module dependency check above: it inspects `Binaries/Mac/*.dylib`, rejects build-machine dependency paths, reads `LC_RPATH`, and verifies that `UnrealEditor-Nozzle.dylib` can resolve `libnozzle.dylib` from `ThirdParty/nozzle/lib/Mac/`.
 
 ## Validation commands
 
@@ -125,6 +127,7 @@ Static shape check, including runtime-source validation for the D3D11 guard, uns
 ```bash
 python3 scripts/check_package_shape.py
 python3 scripts/check_native_staging.py
+python3 scripts/check_buildplugin_module_dependency_assertions.py
 ```
 
 Unreal-independent native bridge compile check:
@@ -171,7 +174,7 @@ Actions -> Unreal BuildPlugin -> Run workflow
 
 That workflow still requires a runner with Unreal Engine already installed and a valid `RunUAT` path. The `runner_labels_json` input is a JSON array, for example `["self-hosted","Windows","Unreal"]` or `["self-hosted","macOS","Unreal"]`. A hosted image is valid only if it is proven to contain the exact requested engine path. Third-party UE project-build Actions are wrappers around `RunUAT`; they do not remove the engine installation requirement.
 
-For #139 native-link evidence, the workflow input `native_staging_mode` must be set to `require`. When staged binaries are not already committed in the checkout, `build_native_payload` must also be enabled so the workflow runs `scripts/stage_native_nozzle.py` before the strict staging check. The default `placeholder` mode is only for source/engine boundary checks and can still prove `WITH_NOZZLE_CORE=0`; it is not native nozzle link evidence. A valid #139 workflow run must show the native payload build step, the strict staging command, the `NozzleCore: WITH_NOZZLE_CORE=1` line emitted by `NozzleCore.Build.cs`, and the post-BuildPlugin packaged-payload check against `build/BuildPlugin/Nozzle-<target>/ThirdParty/nozzle`.
+For #139 native-link evidence, the workflow input `native_staging_mode` must be set to `require`. When staged binaries are not already committed in the checkout, `build_native_payload` must also be enabled so the workflow runs `scripts/stage_native_nozzle.py` before the strict staging check. The default `placeholder` mode is only for source/engine boundary checks and can still prove `WITH_NOZZLE_CORE=0`; it is not native nozzle link evidence. A valid #139 workflow run must show the native payload build step, the strict staging command, the `NozzleCore: WITH_NOZZLE_CORE=1` line emitted by `NozzleCore.Build.cs`, and the post-BuildPlugin packaged-payload check against `build/BuildPlugin/Nozzle-<target>/ThirdParty/nozzle`. For Mac, the workflow also runs the BuildPlugin module dependency checker after packaging so the final module dylibs are inspected for package-loadable `libnozzle.dylib` linkage and non-build-machine `LC_RPATH` behavior.
 
 ## Runtime evidence required later
 

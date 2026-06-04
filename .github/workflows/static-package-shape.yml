@@ -36,6 +36,9 @@ jobs:
       - name: Check package assertion regressions
         run: python3 scripts/check_build_plugin_package_assertions.py
 
+      - name: Check artifact module dependency regressions
+        run: python3 scripts/check_buildplugin_module_dependency_assertions.py
+
       - name: Create source-shape package
         run: python3 scripts/package_source.py --output build/nozzle-unreal-scaffold.zip --root-name nozzle-unreal-scaffold
 
