@@ -11,7 +11,16 @@ public class NozzleSmoke : ModuleRules
             "Core",
             "CoreUObject",
             "Engine",
-            "Nozzle"
+            "Nozzle",
+            "RenderCore"
         });
+
+        if(Target.bBuildEditor)
+        {
+            PrivateDependencyModuleNames.AddRange(new string[]
+            {
+                "UnrealEd"
+            });
+        }
     }
 }

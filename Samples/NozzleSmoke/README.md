@@ -1,12 +1,67 @@
-# NozzleSmoke sample skeleton
+# NozzleSmoke sample
 
-This is only a skeleton for future Phase 0/Phase 1 validation. It does not contain a map, sender component, receiver component, material, or any proven Unreal-to-nozzle runtime path.
+Minimal Unreal sample project for nozzle runtime diagnostics. It contains an
+Editor PIE automation test for the smallest macOS Metal row:
 
-Before using it for evidence:
+```text
+Nozzle.Smoke.MacMetal.UnrealSenderToViewer.EditorPIE.320x240
+```
 
-1. Install or copy the `Nozzle` plugin into a location Unreal can discover.
-2. Use a pinned Unreal Engine 5.x installation.
-3. Launch/build with Win64 and D3D11 (`DefaultGraphicsRHI_DX11` or an explicit `-d3d11`/`-dx11` argument).
-4. Record the exact Unreal version, plugin SHA, nozzle SHA, GPU, Windows version, RHI, texture format, and smoke-test output.
+The test creates a transient 320x240 `UTextureRenderTarget2D`, draws a
+non-symmetric quadrant pattern with a moving frame marker, publishes it through
+`UNozzleSenderComponent`, and logs `NOZZLE_SMOKE_*` diagnostics including native
+Metal texture details, IOSurface state, synchronization text, dimensions, and
+multi-frame render sequence.
 
-A successful package-shape CI run for this repository is not runtime evidence.
+## Running the diagnostic
+
+1. Install or copy the `Nozzle` plugin into a location Unreal can discover. For
+   local repository work, a temporary `Samples/NozzleSmoke/Plugins/Nozzle`
+   symlink to `../../../Nozzle` is sufficient; do not commit that symlink.
+2. Stage the platform-native nozzle payload when runtime probing is needed:
+
+   ```sh
+   python3 scripts/stage_native_nozzle.py --platform Mac
+   python3 scripts/check_native_staging.py --require Mac --inspect-deps
+   ```
+
+3. Build the editor target with the tested Unreal version:
+
+   ```sh
+   '/Users/Shared/Epic Games/UE_5.7/Engine/Build/BatchFiles/Mac/Build.sh' \
+     NozzleSmokeEditor Mac Development \
+     -Project='/path/to/nozzle-unreal/Samples/NozzleSmoke/NozzleSmoke.uproject' \
+     -NoHotReload
+   ```
+
+4. Run the Editor PIE diagnostic:
+
+   ```sh
+   '/Users/Shared/Epic Games/UE_5.7/Engine/Binaries/Mac/UnrealEditor.app/Contents/MacOS/UnrealEditor' \
+     '/path/to/nozzle-unreal/Samples/NozzleSmoke/NozzleSmoke.uproject' \
+     -unattended -nop4 -nosplash -stdout -FullStdOutLogOutput \
+     -ExecCmds='Automation RunTests Nozzle.Smoke.MacMetal.UnrealSenderToViewer.EditorPIE.320x240' \
+     -TestExit='Automation Test Queue Empty'
+   ```
+
+Add `-NozzleSmokeStrictPass` when the run must fail unless the row satisfies the
+strict cross-process Metal acceptance gate. Without that flag, the automation
+logs `row_status=MISSING` instead of failing when Unreal's texture is not
+IOSurface-backed.
+
+## Evidence boundary
+
+A successful automation process is **not runtime evidence** by itself. Treat the
+row as PASS only when the issue evidence includes:
+
+- exact Unreal Engine, `nozzle-unreal`, and nozzle core SHAs;
+- Metal RHI confirmation;
+- `NativeTextureDetails`, `bIOSurfaceBacked`, and `IOSurfaceID`;
+- concrete synchronization boundary/outcome;
+- multi-frame marker / stale-frame evidence;
+- captured `nozzle-viewer` output proving dimensions, orientation, channel order,
+  and alpha behavior.
+
+If `row_status=MISSING` or the viewer reports failed quadrant semantics, keep the
+runtime matrix row MISSING/FAIL and split the focused bug instead of claiming
+Metal runtime support.

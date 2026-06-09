@@ -1,7 +1,7 @@
 {
   "FileVersion": 3,
   "Category": "Samples",
-  "Description": "Skeleton project for future nozzle Unreal smoke testing. It is not a completed runtime validation sample.",
+  "Description": "Minimal project for nozzle Unreal runtime diagnostics. It logs Editor PIE evidence but does not claim a completed runtime PASS by itself.",
   "Modules": [
     {
       "Name": "NozzleSmoke",
