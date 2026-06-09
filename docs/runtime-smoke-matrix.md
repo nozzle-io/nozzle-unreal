@@ -27,7 +27,7 @@ Do not mark any row PASS without command output, logs, screenshots or captured f
 
 | Direction | Host mode | Size | Required evidence | Status |
 | --- | --- | --- | --- | --- |
-| Unreal sender -> nozzle-viewer | Editor PIE | 320x240 | Metal RHI, IOSurface-backed texture proof, native format, no flip, no R/B swap | MISSING |
+| Unreal sender -> nozzle-viewer | Editor PIE | 320x240 | #158 PASS evidence: UE 5.7.4, macOS 15.4.1, Apple M4/Metal, `unreal_metal_blit_to_iosurface`, `MTLPixelFormat=80`, IOSurface-backed intermediate with non-zero IOSurface ID, `usage=0x3`, `RHICmdList.SubmitAndBlockUntilGPUIdle` + Metal blit `waitUntilCompleted`, viewer JSON proving 320x240, orientation/channel order, alpha patch, moving marker, and distinct frames; UE log shows `UWorld::CleanupWorld ... bSessionEnded=true, bCleanupResources=true` and automation `Result={Success}`. SHAs: nozzle-unreal `01d91aec9ade29068c5cf645c05177bed86ff158`, nozzle-viewer `e2c7126d633b4d59f3f4b4841fa39558131dcb6a`, core `65316f0b226db1ccd39380b14694157c41d08cc1`. Evidence: nozzle-dev #158 final report https://github.com/nozzle-io/nozzle-dev/issues/158#issuecomment-4659413101 and #140 follow-up https://github.com/nozzle-io/nozzle-dev/issues/140#issuecomment-4659472771. | PASS (#158) |
 | Unreal sender -> nozzle-viewer | Editor PIE | 641x479 | Metal RHI, IOSurface-backed texture proof, native format, no flip, no R/B swap | MISSING |
 | Unreal sender -> nozzle-viewer | Packaged Development | 320x240 | Metal RHI, IOSurface-backed texture proof, native format, no flip, no R/B swap | MISSING |
 | Unreal sender -> nozzle-viewer | Packaged Development | 641x479 | Metal RHI, IOSurface-backed texture proof, native format, no flip, no R/B swap | MISSING |
@@ -43,6 +43,8 @@ Do not mark any row PASS without command output, logs, screenshots or captured f
 | nozzle-mixer -> Unreal receiver/material | Editor PIE | 641x479 | Metal RHI, IOSurface-backed target proof, render target update, no flip, no R/B swap, mixer output source selected | MISSING |
 | nozzle-mixer -> Unreal receiver/material | Packaged Development | 320x240 | Metal RHI, IOSurface-backed target proof, render target update, no flip, no R/B swap, mixer output source selected | MISSING |
 | nozzle-mixer -> Unreal receiver/material | Packaged Development | 641x479 | Metal RHI, IOSurface-backed target proof, render target update, no flip, no R/B swap, mixer output source selected | MISSING |
+
+Note: the PASS above is limited to the single macOS Metal Editor PIE 320x240 Unreal-sender-to-nozzle-viewer row proven in #158. It does not prove packaged builds, 641x479, nozzle-mixer forwarding, Unreal receiver/material rows, Win64 D3D11, or broad macOS Metal support; those rows remain MISSING until separately proven.
 
 Every PASS record must include:
 
