@@ -473,23 +473,33 @@ int32 FNozzleNativeBridge::CopyFrameToNativeTexture_RenderThread(NozzleFrame* Fr
     NozzleErrorCode Error = NOZZLE_ERROR_UNSUPPORTED_BACKEND;
     if(OutDiagnostics.bD3D11RHI)
     {
+        OutDiagnostics.TransferMode = TEXT("nozzle_frame_to_unreal_d3d11_texture");
+        OutDiagnostics.SynchronizationBoundary = TEXT("render-thread command calls nozzle_frame_copy_to_native_texture into the Unreal target D3D11 texture; backend copy completion is returned before diagnostics are stored");
         Error = nozzle_unreal_native::copy_frame_to_d3d11_texture(Frame, {TextureView.NativeTexture, static_cast<uint32>(TextureView.Width), static_cast<uint32>(TextureView.Height), NOZZLE_FORMAT_BGRA8_UNORM, NOZZLE_FORMAT_BGRA8_UNORM});
     }
     else if(OutDiagnostics.bMetalRHI)
     {
+        const FNozzleMetalTextureDiagnostics MetalDiagnostics = NozzleUnrealDescribeMetalTexture(TextureView.NativeTexture, TEXT("receiver_target=FRHITexture::GetNativeResource"));
+        OutDiagnostics.NativeTextureDetails = MetalDiagnostics.Details;
+        OutDiagnostics.bIOSurfaceBacked = MetalDiagnostics.bIOSurfaceBacked;
+        OutDiagnostics.IOSurfaceID = MetalDiagnostics.IOSurfaceID;
+        OutDiagnostics.TransferMode = TEXT("nozzle_frame_to_unreal_metal_texture");
+        OutDiagnostics.SynchronizationBoundary = TEXT("render-thread command calls nozzle_frame_copy_to_native_texture into the Unreal target MTLTexture; backend Metal copy wait completes before diagnostics are stored");
         Error = nozzle_unreal_native::copy_frame_to_metal_texture(Frame, {TextureView.NativeTexture, static_cast<uint32>(TextureView.Width), static_cast<uint32>(TextureView.Height), NOZZLE_FORMAT_BGRA8_UNORM, NOZZLE_FORMAT_BGRA8_UNORM});
     }
 
     if(Error != NOZZLE_OK)
     {
-        ApplyError(OutDiagnostics, FString::Printf(TEXT("nozzle frame copy to native texture failed with error code %d"), static_cast<int32>(Error)));
+        ApplyError(OutDiagnostics, FString::Printf(TEXT("nozzle frame copy to native texture failed with error code %d target='%s'"), static_cast<int32>(Error), *OutDiagnostics.NativeTextureDetails));
         return static_cast<int32>(Error);
     }
 
     OutDiagnostics.State = ENozzleRuntimeState::Running;
     OutDiagnostics.Width = TextureView.Width;
     OutDiagnostics.Height = TextureView.Height;
-    OutDiagnostics.Message = TEXT("copied nozzle frame to Unreal native texture through the shared native bridge seam");
+    OutDiagnostics.Message = OutDiagnostics.bMetalRHI
+        ? TEXT("copied nozzle frame to Unreal Metal target texture through the shared native bridge seam")
+        : TEXT("copied nozzle frame to Unreal native texture through the shared native bridge seam");
     return static_cast<int32>(NOZZLE_OK);
 #else
     OutDiagnostics.State = ENozzleRuntimeState::Unavailable;

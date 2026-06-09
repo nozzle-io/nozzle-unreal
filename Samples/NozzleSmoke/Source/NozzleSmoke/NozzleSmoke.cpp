@@ -10,11 +10,16 @@
 #include "Misc/Parse.h"
 #include "Modules/ModuleManager.h"
 #include "NozzleDiagnostics.h"
+#include "NozzleReceiverComponent.h"
 #include "NozzleSenderComponent.h"
 #include "RHICommandList.h"
 #include "RenderingThread.h"
 
 #include <cstdlib>
+
+#if WITH_DEV_AUTOMATION_TESTS && WITH_EDITOR
+#include "Containers/Set.h"
+#endif
 
 #if WITH_DEV_AUTOMATION_TESTS && WITH_EDITOR
 #include "Editor.h"
@@ -491,6 +496,261 @@ private:
     int32 PublishedFrames = 0;
 };
 
+
+struct FNozzleSmokeReceiverSample
+{
+    FString Name;
+    int32 X = 0;
+    int32 Y = 0;
+    FColor Expected;
+    FColor Actual;
+    bool bPassed = false;
+};
+
+bool NozzleSmokeSampleColor(const TArray<FColor>& Pixels, int32 Width, int32 Height, const TCHAR* Name, int32 X, int32 Y, FColor Expected, FNozzleSmokeReceiverSample& OutSample)
+{
+    OutSample.Name = Name;
+    OutSample.X = X;
+    OutSample.Y = Y;
+    OutSample.Expected = Expected;
+    if(X < 0 || Y < 0 || Width <= X || Height <= Y || Pixels.Num() != Width * Height)
+    {
+        OutSample.Actual = FColor::Transparent;
+        OutSample.bPassed = false;
+        return false;
+    }
+    OutSample.Actual = Pixels[(Y * Width) + X];
+    OutSample.bPassed = OutSample.Actual.R == Expected.R && OutSample.Actual.G == Expected.G && OutSample.Actual.B == Expected.B && OutSample.Actual.A == Expected.A;
+    return OutSample.bPassed;
+}
+
+FString NozzleSmokeSamplesToString(const TArray<FNozzleSmokeReceiverSample>& Samples)
+{
+    FString Result;
+    for(const FNozzleSmokeReceiverSample& Sample : Samples)
+    {
+        Result += FString::Printf(
+            TEXT("%s@(%d,%d) expected=[%d,%d,%d,%d] actual=[%d,%d,%d,%d] passed=%d; "),
+            *Sample.Name,
+            Sample.X,
+            Sample.Y,
+            Sample.Expected.R,
+            Sample.Expected.G,
+            Sample.Expected.B,
+            Sample.Expected.A,
+            Sample.Actual.R,
+            Sample.Actual.G,
+            Sample.Actual.B,
+            Sample.Actual.A,
+            Sample.bPassed ? 1 : 0);
+    }
+    return Result;
+}
+
+bool NozzleSmokeFindYellowMarkerX(const TArray<FColor>& Pixels, int32 Width, int32 Height, int32& OutMarkerX)
+{
+    constexpr int32 MarkerY = 144;
+    if(Width <= 24 || Height <= MarkerY || Pixels.Num() != Width * Height)
+    {
+        return false;
+    }
+    for(int32 X = 0; X < Width; X++)
+    {
+        const FColor Pixel = Pixels[(MarkerY * Width) + X];
+        if(Pixel.R == 255 && Pixel.G == 255 && Pixel.B == 0 && Pixel.A == 255)
+        {
+            OutMarkerX = X;
+            return true;
+        }
+    }
+    return false;
+}
+
+class FNozzleSmokeReceiveLatentCommand final : public IAutomationLatentCommand
+{
+public:
+    FNozzleSmokeReceiveLatentCommand(FAutomationTestBase* InTest, const FNozzleSmokeScenario& InScenario, bool bInRequireStrictPass)
+    : Test(InTest)
+    , Scenario(InScenario)
+    , bRequireStrictPass(bInRequireStrictPass)
+    {}
+
+    virtual bool Update() override
+    {
+        if(Test == nullptr)
+        {
+            return true;
+        }
+
+        UWorld* PIEWorld = FindNozzleSmokePIEWorld();
+        if(PIEWorld == nullptr)
+        {
+            Attempts += 1;
+            if(Attempts < 120)
+            {
+                return false;
+            }
+            Test->AddError(TEXT("NOZZLE_RECEIVER_SMOKE_RESULT failed: PIE world was not available"));
+            return true;
+        }
+
+        if(RenderTarget == nullptr)
+        {
+            ReceiverActor = PIEWorld->SpawnActor<AActor>();
+            if(ReceiverActor == nullptr)
+            {
+                Test->AddError(TEXT("NOZZLE_RECEIVER_SMOKE_RESULT failed: SpawnActor returned null"));
+                return true;
+            }
+
+            ReceiverComponent = NewObject<UNozzleReceiverComponent>(ReceiverActor, TEXT("NozzleSmokeReceiverComponent"));
+            if(ReceiverComponent == nullptr)
+            {
+                Test->AddError(TEXT("NOZZLE_RECEIVER_SMOKE_RESULT failed: failed to create receiver component"));
+                return true;
+            }
+
+            RenderTarget = NewObject<UTextureRenderTarget2D>(ReceiverComponent, NAME_None);
+            if(RenderTarget == nullptr)
+            {
+                Test->AddError(TEXT("NOZZLE_RECEIVER_SMOKE_RESULT failed: failed to create target render target"));
+                return true;
+            }
+            RenderTarget->RenderTargetFormat = RTF_RGBA8;
+            RenderTarget->ClearColor = FLinearColor::Black;
+            RenderTarget->bAutoGenerateMips = false;
+            RenderTarget->bForceLinearGamma = true;
+            RenderTarget->InitCustomFormat(Scenario.Width, Scenario.Height, PF_B8G8R8A8, false);
+            RenderTarget->UpdateResourceImmediate(true);
+
+            ReceiverActor->AddInstanceComponent(ReceiverComponent);
+            ReceiverComponent->SenderName = Scenario.SenderName;
+            ReceiverComponent->TargetRenderTarget = RenderTarget;
+            ReceiverComponent->AcquireTimeoutMs = 100;
+            ReceiverComponent->RegisterComponent();
+            Test->AddInfo(FString::Printf(TEXT("NOZZLE_RECEIVER_SMOKE_START source='%s' width=%d height=%d diagnostics=%s"), *Scenario.SenderName, Scenario.Width, Scenario.Height, *NozzleSmokeDiagnosticsToString(ReceiverComponent->GetLastDiagnostics())));
+        }
+
+        const bool bPolled = ReceiverComponent->PollFrame();
+        FlushRenderingCommands();
+        const FNozzleRuntimeDiagnostics RenderDiagnostics = ReceiverComponent->GetLastRenderDiagnostics();
+        const int64 RenderSequence = ReceiverComponent->GetLastRenderSequence();
+        if(RenderSequence != LastRenderSequence)
+        {
+            DistinctRenderSequences += 1;
+            LastRenderSequence = RenderSequence;
+            LastDiagnostics = RenderDiagnostics;
+        }
+
+        TArray<FColor> Pixels;
+        FTextureRenderTargetResource* RenderTargetResource = RenderTarget->GameThread_GetRenderTargetResource();
+        const bool bReadPixels = RenderTargetResource != nullptr && RenderTargetResource->ReadPixels(Pixels);
+        TArray<FNozzleSmokeReceiverSample> Samples;
+        bool bPatternOk = false;
+        bool bMarkerFound = false;
+        int32 MarkerX = -1;
+        if(bReadPixels)
+        {
+            const int32 LeftX = Scenario.Width / 8;
+            const int32 RightX = Scenario.Width - 1 - (Scenario.Width / 8);
+            const int32 TopY = Scenario.Height / 8;
+            const int32 BottomY = Scenario.Height - 1 - (Scenario.Height / 8);
+            const int32 AlphaX = Scenario.Width / 2;
+            const int32 AlphaY = (Scenario.Height / 2) - (Scenario.Height / 16);
+            Samples.SetNum(5);
+            const bool bTopLeftRed = NozzleSmokeSampleColor(Pixels, Scenario.Width, Scenario.Height, TEXT("top_left_red"), LeftX, TopY, FColor(255, 0, 0, 255), Samples[0]);
+            const bool bTopRightGreen = NozzleSmokeSampleColor(Pixels, Scenario.Width, Scenario.Height, TEXT("top_right_green"), RightX, TopY, FColor(0, 255, 0, 255), Samples[1]);
+            const bool bBottomLeftBlue = NozzleSmokeSampleColor(Pixels, Scenario.Width, Scenario.Height, TEXT("bottom_left_blue"), LeftX, BottomY, FColor(0, 0, 255, 255), Samples[2]);
+            const bool bBottomRightWhite = NozzleSmokeSampleColor(Pixels, Scenario.Width, Scenario.Height, TEXT("bottom_right_white"), RightX, BottomY, FColor(255, 255, 255, 255), Samples[3]);
+            const bool bAlphaPatch = NozzleSmokeSampleColor(Pixels, Scenario.Width, Scenario.Height, TEXT("center_magenta_alpha_patch"), AlphaX, AlphaY, FColor(255, 0, 255, 64), Samples[4]);
+            bPatternOk = bTopLeftRed && bTopRightGreen && bBottomLeftBlue && bBottomRightWhite && bAlphaPatch;
+            bMarkerFound = NozzleSmokeFindYellowMarkerX(Pixels, Scenario.Width, Scenario.Height, MarkerX);
+            if(bMarkerFound)
+            {
+                MarkerXs.Add(MarkerX);
+            }
+        }
+
+        if(ObservedFrames < 3 || (ObservedFrames % 30) == 0)
+        {
+            Test->AddInfo(FString::Printf(
+                TEXT("NOZZLE_RECEIVER_SMOKE_FRAME frame=%d polled=%d read_pixels=%d render_sequence=%lld marker_found=%d marker_x=%d diagnostics=%s samples=%s"),
+                ObservedFrames,
+                bPolled ? 1 : 0,
+                bReadPixels ? 1 : 0,
+                static_cast<long long>(RenderSequence),
+                bMarkerFound ? 1 : 0,
+                MarkerX,
+                *NozzleSmokeDiagnosticsToString(RenderDiagnostics),
+                *NozzleSmokeSamplesToString(Samples)));
+        }
+        ObservedFrames += 1;
+
+        const bool bExpectedSize = RenderDiagnostics.Width == Scenario.Width && RenderDiagnostics.Height == Scenario.Height;
+        const bool bRenderDiagnosticsRunning = RenderDiagnostics.State == ENozzleRuntimeState::Running && RenderDiagnostics.bCanUseRuntime;
+        const bool bMetalRHI = RenderDiagnostics.bMetalRHI && RenderDiagnostics.Backend == TEXT("Metal");
+        const bool bTransferPathNamed = RenderDiagnostics.TransferMode == TEXT("nozzle_frame_to_unreal_metal_texture") && !RenderDiagnostics.NativeTextureDetails.IsEmpty();
+        const bool bSyncBoundaryNamed = !RenderDiagnostics.SynchronizationBoundary.IsEmpty();
+        const bool bMarkerMoved = 1 < MarkerXs.Num();
+        const bool bEnoughFrames = 6 <= DistinctRenderSequences;
+        const bool bPassCandidate = bExpectedSize && bRenderDiagnosticsRunning && bMetalRHI && bTransferPathNamed && bSyncBoundaryNamed && bPatternOk && bMarkerMoved && bEnoughFrames;
+        if(bPassCandidate)
+        {
+            Test->AddInfo(FString::Printf(
+                TEXT("NOZZLE_RECEIVER_SMOKE_RESULT row_status=PASS_CANDIDATE source='%s' frames=%d distinct_sequences=%d marker_positions=%d expected_size=%d metal=%d transfer_path=%d sync=%d strict=%d final=%s samples=%s"),
+                *Scenario.SenderName,
+                ObservedFrames,
+                DistinctRenderSequences,
+                MarkerXs.Num(),
+                bExpectedSize ? 1 : 0,
+                bMetalRHI ? 1 : 0,
+                bTransferPathNamed ? 1 : 0,
+                bSyncBoundaryNamed ? 1 : 0,
+                bRequireStrictPass ? 1 : 0,
+                *NozzleSmokeDiagnosticsToString(RenderDiagnostics),
+                *NozzleSmokeSamplesToString(Samples)));
+            return true;
+        }
+
+        const double ElapsedSeconds = FPlatformTime::Seconds() - StartSeconds;
+        if(ElapsedSeconds < 90.0)
+        {
+            return false;
+        }
+
+        Test->AddError(FString::Printf(
+            TEXT("NOZZLE_RECEIVER_SMOKE_RESULT failed: timeout source='%s' frames=%d distinct_sequences=%d marker_positions=%d expected_size=%d read_pixels=%d pattern_ok=%d metal=%d transfer_path=%d sync=%d final=%s samples=%s"),
+            *Scenario.SenderName,
+            ObservedFrames,
+            DistinctRenderSequences,
+            MarkerXs.Num(),
+            bExpectedSize ? 1 : 0,
+            bReadPixels ? 1 : 0,
+            bPatternOk ? 1 : 0,
+            bMetalRHI ? 1 : 0,
+            bTransferPathNamed ? 1 : 0,
+            bSyncBoundaryNamed ? 1 : 0,
+            *NozzleSmokeDiagnosticsToString(RenderDiagnostics),
+            *NozzleSmokeSamplesToString(Samples)));
+        return true;
+    }
+
+private:
+    FAutomationTestBase* Test = nullptr;
+    FNozzleSmokeScenario Scenario;
+    bool bRequireStrictPass = false;
+    TObjectPtr<UTextureRenderTarget2D> RenderTarget = nullptr;
+    TObjectPtr<AActor> ReceiverActor = nullptr;
+    TObjectPtr<UNozzleReceiverComponent> ReceiverComponent = nullptr;
+    FNozzleRuntimeDiagnostics LastDiagnostics;
+    int64 LastRenderSequence = 0;
+    int32 Attempts = 0;
+    int32 ObservedFrames = 0;
+    int32 DistinctRenderSequences = 0;
+    TSet<int32> MarkerXs;
+    double StartSeconds = FPlatformTime::Seconds();
+};
+
 bool RunNozzleSmokeUnrealSenderToViewerMacMetalTest(FAutomationTestBase& Test, const FNozzleSmokeScenario& Scenario)
 {
     if(!PLATFORM_MAC)
@@ -534,6 +794,38 @@ bool FNozzleSmokeUnrealSenderToViewerMacMetal641Test::RunTest(const FString& Par
     Scenario.SenderName = TEXT("NozzleUnrealSmoke641");
     return RunNozzleSmokeUnrealSenderToViewerMacMetalTest(*this, Scenario);
 }
+
+
+bool RunNozzleSmokeViewerToUnrealReceiverMacMetalTest(FAutomationTestBase& Test, const FNozzleSmokeScenario& Scenario)
+{
+    if(!PLATFORM_MAC)
+    {
+        Test.AddInfo(TEXT("NOZZLE_RECEIVER_SMOKE_RESULT skipped: Mac Metal diagnostic is not runnable on this platform"));
+        return true;
+    }
+
+    const bool bRequireStrictPass = FParse::Param(FCommandLine::Get(), TEXT("NozzleSmokeStrictPass"));
+    FAutomationEditorCommonUtils::CreateNewMap();
+    Test.AddCommand(new FStartPIECommand(false));
+    Test.AddCommand(new FNozzleSmokeReceiveLatentCommand(&Test, Scenario, bRequireStrictPass));
+    Test.AddCommand(new FEndPlayMapCommand());
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FNozzleSmokeViewerToUnrealReceiverMacMetal320Test,
+    "Nozzle.Smoke.MacMetal.ViewerToUnrealReceiver.EditorPIE.320x240",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FNozzleSmokeViewerToUnrealReceiverMacMetal320Test::RunTest(const FString& Parameters)
+{
+    FNozzleSmokeScenario Scenario;
+    Scenario.Width = 320;
+    Scenario.Height = 240;
+    Scenario.SenderName = TEXT("NozzleViewerSmoke320");
+    return RunNozzleSmokeViewerToUnrealReceiverMacMetalTest(*this, Scenario);
+}
+
 #endif
 
 class FNozzleSmokeModule final : public FDefaultGameModuleImpl
