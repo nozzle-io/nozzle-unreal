@@ -1,22 +1,29 @@
 #include "NozzleSmoke.h"
 
-#if WITH_DEV_AUTOMATION_TESTS && WITH_EDITOR
-#include "Editor.h"
-#include "Misc/AutomationTest.h"
+#include "Containers/Ticker.h"
+#include "Engine/Engine.h"
+#include "Engine/TextureRenderTarget2D.h"
+#include "Engine/World.h"
+#include "GameFramework/Actor.h"
+#include "HAL/PlatformMisc.h"
+#include "Misc/CommandLine.h"
+#include "Misc/Parse.h"
+#include "Modules/ModuleManager.h"
 #include "NozzleDiagnostics.h"
 #include "NozzleSenderComponent.h"
 #include "RHICommandList.h"
 #include "RenderingThread.h"
-#include "Tests/AutomationEditorCommon.h"
-#include "Engine/TextureRenderTarget2D.h"
-#include "Engine/World.h"
-#endif
 
-#include "Modules/ModuleManager.h"
-
-IMPLEMENT_PRIMARY_GAME_MODULE(FDefaultGameModuleImpl, NozzleSmoke, "NozzleSmoke");
+#include <cstdlib>
 
 #if WITH_DEV_AUTOMATION_TESTS && WITH_EDITOR
+#include "Editor.h"
+#include "Misc/AutomationTest.h"
+#include "Tests/AutomationEditorCommon.h"
+#endif
+
+DEFINE_LOG_CATEGORY_STATIC(LogNozzleSmoke, Log, All);
+
 namespace
 {
 
@@ -29,6 +36,7 @@ struct FNozzleSmokeScenario
 {
     int32 Width = 320;
     int32 Height = 240;
+    int32 FrameCount = NozzleSmokeFrameCount;
     FString SenderName = TEXT("NozzleUnrealSmoke320");
 };
 
@@ -49,6 +57,30 @@ FString NozzleSmokeDiagnosticsToString(const FNozzleRuntimeDiagnostics& Diagnost
         static_cast<unsigned long long>(Diagnostics.IOSurfaceID));
 }
 
+UWorld* FindNozzleSmokeWorld(EWorldType::Type RequiredWorldType)
+{
+    if(GEngine == nullptr)
+    {
+        return nullptr;
+    }
+
+    UWorld* FoundWorld = nullptr;
+    for(const FWorldContext& WorldContext : GEngine->GetWorldContexts())
+    {
+        if(WorldContext.WorldType == RequiredWorldType && WorldContext.World() != nullptr)
+        {
+            if(FoundWorld != nullptr)
+            {
+                return nullptr;
+            }
+            FoundWorld = WorldContext.World();
+        }
+    }
+
+    return FoundWorld;
+}
+
+#if WITH_DEV_AUTOMATION_TESTS && WITH_EDITOR
 UWorld* FindNozzleSmokePIEWorld()
 {
     if(GEditor != nullptr && GEditor->PlayWorld != nullptr)
@@ -56,25 +88,13 @@ UWorld* FindNozzleSmokePIEWorld()
         return GEditor->PlayWorld;
     }
 
-    if(GEngine == nullptr)
-    {
-        return nullptr;
-    }
+    return FindNozzleSmokeWorld(EWorldType::PIE);
+}
+#endif
 
-    UWorld* FoundPIEWorld = nullptr;
-    for(const FWorldContext& WorldContext : GEngine->GetWorldContexts())
-    {
-        if(WorldContext.WorldType == EWorldType::PIE && WorldContext.World() != nullptr)
-        {
-            if(FoundPIEWorld != nullptr)
-            {
-                return nullptr;
-            }
-            FoundPIEWorld = WorldContext.World();
-        }
-    }
-
-    return FoundPIEWorld;
+UWorld* FindNozzleSmokeGameWorld()
+{
+    return FindNozzleSmokeWorld(EWorldType::Game);
 }
 
 void FillNozzleSmokeRect(TArray<uint8>& Pixels, int32 TextureWidth, int32 TextureHeight, int32 X, int32 Y, int32 Width, int32 Height, uint8 Red, uint8 Green, uint8 Blue, uint8 Alpha)
@@ -153,6 +173,157 @@ bool DrawNozzleSmokePattern(UTextureRenderTarget2D* RenderTarget, const FNozzleS
     return true;
 }
 
+class FNozzleSmokeRuntimeRunner final
+{
+public:
+    explicit FNozzleSmokeRuntimeRunner(const FNozzleSmokeScenario& InScenario, bool bInRequireStrictPass)
+    : Scenario(InScenario)
+    , bRequireStrictPass(bInRequireStrictPass)
+    {}
+
+    bool Tick()
+    {
+        if(bFinished)
+        {
+            return false;
+        }
+
+        UWorld* GameWorld = FindNozzleSmokeGameWorld();
+        if(GameWorld == nullptr)
+        {
+            Attempts += 1;
+            if(Attempts < 120)
+            {
+                return true;
+            }
+            Finish(false, TEXT("game world was not available"));
+            return false;
+        }
+
+        if(RenderTarget == nullptr)
+        {
+            SenderActor = GameWorld->SpawnActor<AActor>();
+            if(SenderActor == nullptr)
+            {
+                Finish(false, TEXT("SpawnActor returned null"));
+                return false;
+            }
+
+            SenderComponent = NewObject<UNozzleSenderComponent>(SenderActor, TEXT("NozzleSmokePackagedSenderComponent"));
+            if(SenderComponent == nullptr)
+            {
+                Finish(false, TEXT("failed to create sender component"));
+                return false;
+            }
+
+            RenderTarget = NewObject<UTextureRenderTarget2D>(SenderComponent, NAME_None);
+            if(RenderTarget == nullptr)
+            {
+                Finish(false, TEXT("failed to create render target"));
+                return false;
+            }
+
+            RenderTarget->RenderTargetFormat = RTF_RGBA8;
+            RenderTarget->ClearColor = FLinearColor::Black;
+            RenderTarget->bAutoGenerateMips = false;
+            RenderTarget->bForceLinearGamma = true;
+            RenderTarget->InitCustomFormat(Scenario.Width, Scenario.Height, PF_B8G8R8A8, false);
+            RenderTarget->UpdateResourceImmediate(true);
+
+            SenderActor->AddInstanceComponent(SenderComponent);
+            SenderComponent->SenderName = Scenario.SenderName;
+            SenderComponent->SourceRenderTarget = RenderTarget;
+            SenderComponent->RegisterComponent();
+
+            const bool bStarted = SenderComponent->StartSender();
+            UE_LOG(LogNozzleSmoke, Display, TEXT("NOZZLE_SMOKE_START packaged=1 started=%d diagnostics=%s"), bStarted ? 1 : 0, *NozzleSmokeDiagnosticsToString(SenderComponent->GetLastDiagnostics()));
+            if(!bStarted)
+            {
+                Finish(false, TEXT("StartSender returned false"));
+                return false;
+            }
+        }
+
+        if(!DrawNozzleSmokePattern(RenderTarget, Scenario, PublishedFrames))
+        {
+            PatternUploadAttempts += 1;
+            if(PatternUploadAttempts < 30)
+            {
+                return true;
+            }
+            Finish(false, TEXT("unable to enqueue render target pattern upload"));
+            return false;
+        }
+        PatternUploadAttempts = 0;
+
+        FlushRenderingCommands();
+        const bool bQueued = SenderComponent->PublishFrame();
+        FlushRenderingCommands();
+        const FNozzleRuntimeDiagnostics RenderDiagnostics = SenderComponent->GetLastRenderDiagnostics();
+        const int64 RenderSequence = SenderComponent->GetLastRenderSequence();
+
+        if(PublishedFrames < 3 || (PublishedFrames % 30) == 0)
+        {
+            UE_LOG(LogNozzleSmoke, Display, TEXT("NOZZLE_SMOKE_FRAME packaged=1 frame=%d queued=%d render_sequence=%lld diagnostics=%s"), PublishedFrames, bQueued ? 1 : 0, static_cast<long long>(RenderSequence), *NozzleSmokeDiagnosticsToString(RenderDiagnostics));
+        }
+
+        if(!bQueued)
+        {
+            Finish(false, *FString::Printf(TEXT("PublishFrame returned false at frame=%d"), PublishedFrames));
+            return false;
+        }
+
+        LastRenderSequence = RenderSequence;
+        LastDiagnostics = RenderDiagnostics;
+        PublishedFrames += 1;
+
+        if(PublishedFrames < Scenario.FrameCount)
+        {
+            return true;
+        }
+
+        const bool bPublishedMultipleFrames = Scenario.FrameCount <= LastRenderSequence;
+        const bool bHasExpectedSize = LastDiagnostics.Width == Scenario.Width && LastDiagnostics.Height == Scenario.Height;
+        const bool bIOSurfaceBacked = LastDiagnostics.bIOSurfaceBacked && 0 < LastDiagnostics.IOSurfaceID;
+        const bool bRenderDiagnosticsRunning = LastDiagnostics.State == ENozzleRuntimeState::Running && LastDiagnostics.bCanUseRuntime;
+        const bool bPassCandidate = bPublishedMultipleFrames && bHasExpectedSize && bIOSurfaceBacked && bRenderDiagnosticsRunning;
+
+        const TCHAR* RowStatus = bPassCandidate ? TEXT("PASS_CANDIDATE") : TEXT("MISSING");
+        UE_LOG(LogNozzleSmoke, Display, TEXT("NOZZLE_SMOKE_RESULT packaged=1 row_status=%s frames=%d last_sequence=%lld expected_size=%d iosurface_backed=%d iosurface_id=%llu render_running=%d strict=%d final=%s"), RowStatus, PublishedFrames, static_cast<long long>(LastRenderSequence), bHasExpectedSize ? 1 : 0, bIOSurfaceBacked ? 1 : 0, static_cast<unsigned long long>(LastDiagnostics.IOSurfaceID), bRenderDiagnosticsRunning ? 1 : 0, bRequireStrictPass ? 1 : 0, *NozzleSmokeDiagnosticsToString(LastDiagnostics));
+
+        const bool bSuccess = bPassCandidate || (!bRequireStrictPass && bPublishedMultipleFrames && bHasExpectedSize);
+        Finish(bSuccess, bSuccess ? TEXT("completed") : TEXT("strict packaged sender checks failed"));
+        return false;
+    }
+
+private:
+    void Finish(bool bSuccess, const TCHAR* Message)
+    {
+        bFinished = true;
+        UE_LOG(LogNozzleSmoke, Display, TEXT("NOZZLE_SMOKE_EXIT packaged=1 success=%d message='%s'"), bSuccess ? 1 : 0, Message);
+        FPlatformMisc::RequestExitWithStatus(false, bSuccess ? EXIT_SUCCESS : EXIT_FAILURE);
+        if(!bSuccess)
+        {
+            std::exit(EXIT_FAILURE);
+        }
+    }
+
+    FNozzleSmokeScenario Scenario;
+    bool bRequireStrictPass = false;
+    bool bFinished = false;
+    TObjectPtr<UTextureRenderTarget2D> RenderTarget = nullptr;
+    TObjectPtr<AActor> SenderActor = nullptr;
+    TObjectPtr<UNozzleSenderComponent> SenderComponent = nullptr;
+    FNozzleRuntimeDiagnostics LastDiagnostics;
+    int64 LastRenderSequence = 0;
+    int32 Attempts = 0;
+    int32 PatternUploadAttempts = 0;
+    int32 PublishedFrames = 0;
+};
+
+} // namespace
+
+#if WITH_DEV_AUTOMATION_TESTS && WITH_EDITOR
 class FNozzleSmokePublishLatentCommand final : public IAutomationLatentCommand
 {
 public:
@@ -261,12 +432,12 @@ public:
         LastDiagnostics = RenderDiagnostics;
         PublishedFrames += 1;
 
-        if(PublishedFrames < NozzleSmokeFrameCount)
+        if(PublishedFrames < Scenario.FrameCount)
         {
             return false;
         }
 
-        const bool bPublishedMultipleFrames = NozzleSmokeFrameCount <= LastRenderSequence;
+        const bool bPublishedMultipleFrames = Scenario.FrameCount <= LastRenderSequence;
         const bool bHasExpectedSize = LastDiagnostics.Width == Scenario.Width && LastDiagnostics.Height == Scenario.Height;
         const bool bIOSurfaceBacked = LastDiagnostics.bIOSurfaceBacked && 0 < LastDiagnostics.IOSurfaceID;
         const bool bRenderDiagnosticsRunning = LastDiagnostics.State == ENozzleRuntimeState::Running && LastDiagnostics.bCanUseRuntime;
@@ -319,8 +490,6 @@ private:
     int32 PublishedFrames = 0;
 };
 
-} // namespace
-
 bool RunNozzleSmokeUnrealSenderToViewerMacMetalTest(FAutomationTestBase& Test, const FNozzleSmokeScenario& Scenario)
 {
     if(!PLATFORM_MAC)
@@ -365,3 +534,66 @@ bool FNozzleSmokeUnrealSenderToViewerMacMetal641Test::RunTest(const FString& Par
     return RunNozzleSmokeUnrealSenderToViewerMacMetalTest(*this, Scenario);
 }
 #endif
+
+class FNozzleSmokeModule final : public FDefaultGameModuleImpl
+{
+public:
+    virtual void StartupModule() override
+    {
+        FDefaultGameModuleImpl::StartupModule();
+
+        if(FParse::Param(FCommandLine::Get(), TEXT("NozzleSmokePackagedSender")))
+        {
+            FNozzleSmokeScenario Scenario;
+            FParse::Value(FCommandLine::Get(), TEXT("NozzleSmokeWidth="), Scenario.Width);
+            FParse::Value(FCommandLine::Get(), TEXT("NozzleSmokeHeight="), Scenario.Height);
+            FParse::Value(FCommandLine::Get(), TEXT("NozzleSmokeFrameCount="), Scenario.FrameCount);
+            Scenario.FrameCount = FMath::Max(1, Scenario.FrameCount);
+            FString SenderName;
+            if(FParse::Value(FCommandLine::Get(), TEXT("NozzleSmokeSource="), SenderName) && !SenderName.IsEmpty())
+            {
+                Scenario.SenderName = SenderName;
+            }
+            else if(Scenario.Width == 641 && Scenario.Height == 479)
+            {
+                Scenario.SenderName = TEXT("NozzleUnrealSmoke641");
+            }
+            else
+            {
+                Scenario.SenderName = TEXT("NozzleUnrealSmoke320");
+            }
+
+            const bool bRequireStrictPass = FParse::Param(FCommandLine::Get(), TEXT("NozzleSmokeStrictPass"));
+            RuntimeRunner = MakeUnique<FNozzleSmokeRuntimeRunner>(Scenario, bRequireStrictPass);
+            RuntimeTickerHandle = FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateRaw(this, &FNozzleSmokeModule::TickRuntimeSmoke));
+            UE_LOG(LogNozzleSmoke, Display, TEXT("NOZZLE_SMOKE_CONFIG packaged=1 width=%d height=%d frames=%d source='%s' strict=%d"), Scenario.Width, Scenario.Height, Scenario.FrameCount, *Scenario.SenderName, bRequireStrictPass ? 1 : 0);
+        }
+    }
+
+    virtual void ShutdownModule() override
+    {
+        if(RuntimeTickerHandle.IsValid())
+        {
+            FTSTicker::GetCoreTicker().RemoveTicker(RuntimeTickerHandle);
+            RuntimeTickerHandle.Reset();
+        }
+        RuntimeRunner.Reset();
+        FDefaultGameModuleImpl::ShutdownModule();
+    }
+
+private:
+    bool TickRuntimeSmoke(float DeltaTime)
+    {
+        (void)DeltaTime;
+        if(!RuntimeRunner.IsValid())
+        {
+            return false;
+        }
+        return RuntimeRunner->Tick();
+    }
+
+    TUniquePtr<FNozzleSmokeRuntimeRunner> RuntimeRunner;
+    FTSTicker::FDelegateHandle RuntimeTickerHandle;
+};
+
+IMPLEMENT_PRIMARY_GAME_MODULE(FNozzleSmokeModule, NozzleSmoke, "NozzleSmoke");

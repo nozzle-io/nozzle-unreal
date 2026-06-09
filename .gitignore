@@ -21,3 +21,13 @@ Saved/
 # OS/editor noise
 .DS_Store
 Thumbs.db
+
+# Track only the NozzleSmoke macOS packaging templates; the rest of Unreal's
+# Build/ directory remains generated output.
+!Samples/NozzleSmoke/Build/
+Samples/NozzleSmoke/Build/**
+!Samples/NozzleSmoke/Build/Mac/
+!Samples/NozzleSmoke/Build/Mac/Resources/
+!Samples/NozzleSmoke/Build/Mac/Resources/Info.Template.plist
+!Samples/NozzleSmoke/Build/Mac/Resources/Sandbox.NoNet.entitlements
+!Samples/NozzleSmoke/Build/Mac/Resources/Sandbox.Server.entitlements

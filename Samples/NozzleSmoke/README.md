@@ -1,6 +1,6 @@
 # NozzleSmoke sample
 
-Minimal Unreal sample project for nozzle runtime diagnostics. It contains an
+Minimal Unreal sample project for nozzle runtime diagnostics. It contains
 Editor PIE automation tests for the macOS Metal sender-to-viewer rows:
 
 ```text
@@ -8,7 +8,13 @@ Nozzle.Smoke.MacMetal.UnrealSenderToViewer.EditorPIE.320x240
 Nozzle.Smoke.MacMetal.UnrealSenderToViewer.EditorPIE.641x479
 ```
 
-Each test creates a transient `UTextureRenderTarget2D` at the row size, draws a
+It also contains a packaged-game sender harness enabled by
+`-NozzleSmokePackagedSender`. The packaged harness uses the same transient
+render-target pattern and source names, then exits with status 0 only after the
+requested frame sequence has been published. Use `-NozzleSmokeFrameCount=<n>`
+to extend the sender lifetime when attaching an external receiver after launch.
+
+Each path creates a transient `UTextureRenderTarget2D` at the row size, draws a
 non-symmetric quadrant pattern with a deliberate alpha patch and a moving frame
 marker, publishes it through `UNozzleSenderComponent`, and logs
 `NOZZLE_SMOKE_*` diagnostics including native Metal texture details, IOSurface
@@ -119,6 +125,40 @@ row as PASS only when the issue evidence includes:
   `checks.moving_marker`, and `checks.distinct_frames`;
 - captured `nozzle-viewer` output proving dimensions, orientation, channel order,
   and alpha behavior.
+
+
+6. For the packaged Development row, package the sample and run the app with the
+   packaged sender harness. Keep the receiver command on the same source name
+   (`NozzleUnrealSmoke320`) and dimensions (`320x240`) while the app is running.
+   Do not add `-archive` unless you specifically need a copied archive; the
+   self-contained app produced by `-package` is enough for this smoke row. The
+   sample's macOS entitlements intentionally do not enable App Sandbox because
+   sandboxed packaged apps cannot create the globally lookupable IOSurfaces used
+   for cross-process nozzle sharing.
+
+   ```sh
+   '/Users/Shared/Epic Games/UE_5.7/Engine/Build/BatchFiles/RunUAT.sh' \
+     BuildCookRun \
+     -project='/path/to/nozzle-unreal/Samples/NozzleSmoke/NozzleSmoke.uproject' \
+     -noP4 -platform=Mac -clientconfig=Development -build -cook -stage -package
+
+   '/path/to/nozzle-unreal/Samples/NozzleSmoke/Binaries/Mac/NozzleSmoke.app/Contents/MacOS/NozzleSmoke' \
+     -NozzleSmokePackagedSender \
+     -NozzleSmokeWidth=320 \
+     -NozzleSmokeHeight=240 \
+     -NozzleSmokeSource=NozzleUnrealSmoke320 \
+     -NozzleSmokeFrameCount=1200 \
+     -NozzleSmokeStrictPass \
+     -stdout -FullStdOutLogOutput
+   ```
+
+   The packaged app must verify with `codesign --verify --deep --strict`, use a
+   project-owned bundle identifier (`org.nozzle-io.unreal-smoke`), and have no
+   `com.apple.security.app-sandbox` entitlement. The packaged log must include
+   `NOZZLE_SMOKE_CONFIG packaged=1 width=320 height=240 frames=<n>`,
+   `NOZZLE_SMOKE_RESULT packaged=1 row_status=PASS_CANDIDATE`, and
+   `NOZZLE_SMOKE_EXIT packaged=1 success=1`. The row is still not PASS unless
+   the concurrent `nozzle-viewer` JSON proves the captured frames.
 
 If `row_status=MISSING` or the viewer reports failed quadrant semantics, keep the
 runtime matrix row MISSING/FAIL and split the focused bug instead of claiming
