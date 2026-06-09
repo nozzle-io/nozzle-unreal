@@ -39,6 +39,7 @@ struct FNozzleMetalIntermediateTextureCache
     void* Texture = nullptr;
     void* Surface = nullptr;
     void* CommandQueue = nullptr;
+    void* Device = nullptr;
     int32 Width = 0;
     int32 Height = 0;
     uint64 PixelFormat = 0;

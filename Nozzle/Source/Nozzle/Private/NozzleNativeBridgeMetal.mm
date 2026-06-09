@@ -66,7 +66,7 @@ bool NozzleUnrealEnsureMetalIntermediateTexture(
     }
 
     constexpr uint64 DesiredPixelFormat = static_cast<uint64>(MTLPixelFormatBGRA8Unorm);
-    if(Cache.Texture != nullptr && Cache.Surface != nullptr && Cache.CommandQueue != nullptr && Cache.Width == Width && Cache.Height == Height && Cache.PixelFormat == DesiredPixelFormat)
+    if(Cache.Texture != nullptr && Cache.Surface != nullptr && Cache.CommandQueue != nullptr && Cache.Device == (__bridge void*)Device && Cache.Width == Width && Cache.Height == Height && Cache.PixelFormat == DesiredPixelFormat)
     {
         return true;
     }
@@ -101,7 +101,7 @@ bool NozzleUnrealEnsureMetalIntermediateTexture(
     }
 
     MTLTextureDescriptor* TextureDescriptor = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm width:static_cast<NSUInteger>(Width) height:static_cast<NSUInteger>(Height) mipmapped:NO];
-    TextureDescriptor.usage = MTLTextureUsageShaderRead;
+    TextureDescriptor.usage = MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite;
     TextureDescriptor.storageMode = MTLStorageModeShared;
 
     id<MTLTexture> Texture = [Device newTextureWithDescriptor:TextureDescriptor iosurface:Surface plane:0];
@@ -150,6 +150,7 @@ bool NozzleUnrealEnsureMetalIntermediateTexture(
 #endif
     Cache.Width = Width;
     Cache.Height = Height;
+    Cache.Device = (__bridge void*)Device;
     Cache.PixelFormat = DesiredPixelFormat;
     return true;
 }
