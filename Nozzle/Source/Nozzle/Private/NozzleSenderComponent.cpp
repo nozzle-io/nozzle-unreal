@@ -5,6 +5,8 @@
 #include "Misc/ScopeLock.h"
 #include "NozzleNativeBridge.h"
 #include "NozzleRuntimeModule.h"
+#include "DynamicRHI.h"
+#include "RHICommandList.h"
 #include "RenderingThread.h"
 #include "TextureResource.h"
 
@@ -48,6 +50,21 @@ bool IsSenderRenderCancelled(const TSharedPtr<FNozzleSenderRenderState, ESPMode:
 
     FScopeLock Lock(&RenderState->Mutex);
     return RenderState->bCancelRequested;
+}
+
+bool WaitForMetalSourceTextureReady_RenderThread(FRHICommandListImmediate& RHICmdList, FNozzleRuntimeDiagnostics& Diagnostics)
+{
+    FGPUFenceRHIRef SourceReadyFence = RHICreateGPUFence(TEXT("NozzleMetalSourceReady"));
+    if(!SourceReadyFence.IsValid())
+    {
+        Diagnostics.Message = TEXT("Metal source synchronization failed: RHICreateGPUFence returned null");
+        return false;
+    }
+
+    RHICmdList.WriteGPUFence(SourceReadyFence);
+    RHICmdList.ImmediateFlush(EImmediateFlushType::DispatchToRHIThread);
+    SourceReadyFence->Wait(RHICmdList, RHICmdList.GetGPUMask());
+    return true;
 }
 
 } // namespace
@@ -275,9 +292,11 @@ bool UNozzleSenderComponent::PublishFrame()
                 return;
             }
 
-            if(RenderThreadDiagnostics.bMetalRHI)
+            if(RenderThreadDiagnostics.bMetalRHI && !WaitForMetalSourceTextureReady_RenderThread(RHICmdList, RenderThreadDiagnostics))
             {
-                RHICmdList.SubmitAndBlockUntilGPUIdle();
+                StoreSenderRenderDiagnostics(LocalRenderState, RenderThreadDiagnostics);
+                UE_LOG(LogNozzle, Error, TEXT("native texture source synchronization failed: %s"), *RenderThreadDiagnostics.Message);
+                return;
             }
 
             FNozzleNativeTextureView PublishView;

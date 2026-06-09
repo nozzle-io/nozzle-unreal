@@ -338,7 +338,7 @@ bool NozzleUnrealPrepareMetalPublishTexture(
         {
             OutPublishTextureView = SourceTextureView;
             OutPublishTextureView.TransferMode = TEXT("unreal_metal_direct_iosurface_source_to_nozzle_ring");
-            OutPublishTextureView.SynchronizationBoundary = TEXT("render thread calls RHICmdList.SubmitAndBlockUntilGPUIdle before publish; source texture is IOSurface-backed; nozzle_sender_publish_native_texture_ex performs a synchronous Metal blit into the nozzle-owned ring texture and waits for command-buffer completion");
+            OutPublishTextureView.SynchronizationBoundary = TEXT("render thread writes an FRHIGPUFence after Unreal source texture work, dispatches it to the RHI thread, and waits only that fence before publish; source texture is IOSurface-backed; nozzle_sender_publish_native_texture_ex performs a synchronous Metal blit into the nozzle-owned ring texture and waits for command-buffer completion");
             OutDiagnostics.NativeTextureDetails = SourceDiagnostics.Details;
             OutDiagnostics.bIOSurfaceBacked = true;
             OutDiagnostics.IOSurfaceID = SourceDiagnostics.IOSurfaceID;
@@ -361,7 +361,7 @@ bool NozzleUnrealPrepareMetalPublishTexture(
         OutPublishTextureView.Width = Cache.Width;
         OutPublishTextureView.Height = Cache.Height;
         OutPublishTextureView.TransferMode = TEXT("unreal_metal_blit_to_iosurface");
-        OutPublishTextureView.SynchronizationBoundary = TEXT("render thread calls RHICmdList.SubmitAndBlockUntilGPUIdle before the cross-queue copy; Unreal source MTLTexture was copied into a named kIOSurfaceIsGlobal BGRA8Unorm intermediate with a Metal blit command buffer and waitUntilCompleted; nozzle_sender_publish_native_texture_ex then performs its synchronous Metal blit into the nozzle-owned ring texture");
+        OutPublishTextureView.SynchronizationBoundary = TEXT("render thread writes an FRHIGPUFence after Unreal source texture work, dispatches it to the RHI thread, and waits only that fence before the cross-queue copy; Unreal source MTLTexture was copied into a named kIOSurfaceIsGlobal BGRA8Unorm intermediate with a Metal blit command buffer and waitUntilCompleted; nozzle_sender_publish_native_texture_ex then performs its synchronous Metal blit into the nozzle-owned ring texture");
 
         const FNozzleMetalTextureDiagnostics IntermediateDiagnostics = NozzleUnrealDescribeMetalTexture(OutPublishTextureView.NativeTexture, TEXT("published_intermediate"));
         OutDiagnostics.NativeTextureDetails = FString::Printf(TEXT("source={%s}; published_intermediate={%s}"), *SourceDiagnostics.Details, *IntermediateDiagnostics.Details);
