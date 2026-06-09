@@ -1,13 +1,14 @@
 # NozzleSmoke sample
 
 Minimal Unreal sample project for nozzle runtime diagnostics. It contains an
-Editor PIE automation test for the smallest macOS Metal row:
+Editor PIE automation tests for the macOS Metal sender-to-viewer rows:
 
 ```text
 Nozzle.Smoke.MacMetal.UnrealSenderToViewer.EditorPIE.320x240
+Nozzle.Smoke.MacMetal.UnrealSenderToViewer.EditorPIE.641x479
 ```
 
-The test creates a transient 320x240 `UTextureRenderTarget2D`, draws a
+Each test creates a transient `UTextureRenderTarget2D` at the row size, draws a
 non-symmetric quadrant pattern with a deliberate alpha patch and a moving frame
 marker, publishes it through `UNozzleSenderComponent`, and logs
 `NOZZLE_SMOKE_*` diagnostics including native Metal texture details, IOSurface
@@ -58,7 +59,8 @@ mode, for example `unreal_metal_blit_to_iosurface`, and must show the texture
 actually passed into nozzle is IOSurface-backed with a non-zero IOSurface ID.
 
 5. While the Unreal sender diagnostic is running, capture receiver evidence with
-   `nozzle-viewer` and save the JSON artifact:
+   `nozzle-viewer` and save the JSON artifact. Match the source name and
+   dimensions to the row under test:
 
    ```sh
    /path/to/nozzle-viewer \
@@ -70,7 +72,18 @@ actually passed into nozzle is IOSurface-backed with a non-zero IOSurface ID.
      --timeout-ms 120000 \
      --expect-alpha-patch \
      --expect-moving-marker \
-     --evidence /tmp/nozzle-unreal-viewer-smoke.json
+     --evidence /tmp/nozzle-unreal-viewer-smoke-320.json
+
+   /path/to/nozzle-viewer \
+     --smoke-receiver \
+     --source NozzleUnrealSmoke641 \
+     --width 641 \
+     --height 479 \
+     --min-frames 5 \
+     --timeout-ms 120000 \
+     --expect-alpha-patch \
+     --expect-moving-marker \
+     --evidence /tmp/nozzle-unreal-viewer-smoke-641.json
    ```
 
 The viewer evidence must report at least five distinct frame indices in

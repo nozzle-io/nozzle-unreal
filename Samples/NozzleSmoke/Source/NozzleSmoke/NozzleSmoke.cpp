@@ -20,9 +20,17 @@ IMPLEMENT_PRIMARY_GAME_MODULE(FDefaultGameModuleImpl, NozzleSmoke, "NozzleSmoke"
 namespace
 {
 
-constexpr int32 NozzleSmokeWidth = 320;
-constexpr int32 NozzleSmokeHeight = 240;
 constexpr int32 NozzleSmokeFrameCount = 180;
+constexpr int32 NozzleSmokeMarkerWidth = 24;
+constexpr int32 NozzleSmokeMarkerHeight = 32;
+constexpr int32 NozzleSmokeMarkerY = 128;
+
+struct FNozzleSmokeScenario
+{
+    int32 Width = 320;
+    int32 Height = 240;
+    FString SenderName = TEXT("NozzleUnrealSmoke320");
+};
 
 FString NozzleSmokeDiagnosticsToString(const FNozzleRuntimeDiagnostics& Diagnostics)
 {
@@ -69,13 +77,18 @@ UWorld* FindNozzleSmokePIEWorld()
     return FoundPIEWorld;
 }
 
-void FillNozzleSmokeRect(TArray<uint8>& Pixels, int32 X, int32 Y, int32 Width, int32 Height, uint8 Red, uint8 Green, uint8 Blue, uint8 Alpha)
+void FillNozzleSmokeRect(TArray<uint8>& Pixels, int32 TextureWidth, int32 TextureHeight, int32 X, int32 Y, int32 Width, int32 Height, uint8 Red, uint8 Green, uint8 Blue, uint8 Alpha)
 {
-    for(int32 Row = Y; Row < Y + Height; Row++)
+    const int32 StartX = FMath::Clamp(X, 0, TextureWidth);
+    const int32 StartY = FMath::Clamp(Y, 0, TextureHeight);
+    const int32 EndX = FMath::Clamp(X + Width, 0, TextureWidth);
+    const int32 EndY = FMath::Clamp(Y + Height, 0, TextureHeight);
+
+    for(int32 Row = StartY; Row < EndY; Row++)
     {
-        for(int32 Column = X; Column < X + Width; Column++)
+        for(int32 Column = StartX; Column < EndX; Column++)
         {
-            const int32 Offset = ((Row * NozzleSmokeWidth) + Column) * 4;
+            const int32 Offset = ((Row * TextureWidth) + Column) * 4;
             Pixels[Offset + 0] = Blue;
             Pixels[Offset + 1] = Green;
             Pixels[Offset + 2] = Red;
@@ -84,7 +97,7 @@ void FillNozzleSmokeRect(TArray<uint8>& Pixels, int32 X, int32 Y, int32 Width, i
     }
 }
 
-bool DrawNozzleSmokePattern(UTextureRenderTarget2D* RenderTarget, int32 FrameIndex)
+bool DrawNozzleSmokePattern(UTextureRenderTarget2D* RenderTarget, const FNozzleSmokeScenario& Scenario, int32 FrameIndex)
 {
     if(RenderTarget == nullptr)
     {
@@ -98,8 +111,8 @@ bool DrawNozzleSmokePattern(UTextureRenderTarget2D* RenderTarget, int32 FrameInd
     }
 
     TSharedRef<TArray<uint8>, ESPMode::ThreadSafe> Pixels = MakeShared<TArray<uint8>, ESPMode::ThreadSafe>();
-    Pixels->SetNumZeroed(NozzleSmokeWidth * NozzleSmokeHeight * 4);
-    for(int32 Index = 0; Index < NozzleSmokeWidth * NozzleSmokeHeight; Index++)
+    Pixels->SetNumZeroed(Scenario.Width * Scenario.Height * 4);
+    for(int32 Index = 0; Index < Scenario.Width * Scenario.Height; Index++)
     {
         const int32 Offset = Index * 4;
         (*Pixels)[Offset + 0] = 5;
@@ -108,14 +121,22 @@ bool DrawNozzleSmokePattern(UTextureRenderTarget2D* RenderTarget, int32 FrameInd
         (*Pixels)[Offset + 3] = 255;
     }
 
-    FillNozzleSmokeRect(*Pixels, 0, 0, 96, 72, 255, 0, 0, 255);
-    FillNozzleSmokeRect(*Pixels, 224, 0, 96, 72, 0, 255, 0, 255);
-    FillNozzleSmokeRect(*Pixels, 0, 168, 96, 72, 0, 0, 255, 255);
-    FillNozzleSmokeRect(*Pixels, 224, 168, 96, 72, 255, 255, 255, 255);
-    FillNozzleSmokeRect(*Pixels, 136, 84, 48, 32, 255, 0, 255, 64);
+    const int32 CornerWidth = FMath::Max(32, Scenario.Width / 3);
+    const int32 CornerHeight = FMath::Max(32, Scenario.Height / 3);
+    FillNozzleSmokeRect(*Pixels, Scenario.Width, Scenario.Height, 0, 0, CornerWidth, CornerHeight, 255, 0, 0, 255);
+    FillNozzleSmokeRect(*Pixels, Scenario.Width, Scenario.Height, Scenario.Width - CornerWidth, 0, CornerWidth, CornerHeight, 0, 255, 0, 255);
+    FillNozzleSmokeRect(*Pixels, Scenario.Width, Scenario.Height, 0, Scenario.Height - CornerHeight, CornerWidth, CornerHeight, 0, 0, 255, 255);
+    FillNozzleSmokeRect(*Pixels, Scenario.Width, Scenario.Height, Scenario.Width - CornerWidth, Scenario.Height - CornerHeight, CornerWidth, CornerHeight, 255, 255, 255, 255);
 
-    const int32 MarkerX = (FrameIndex * 29) % (NozzleSmokeWidth - 24);
-    FillNozzleSmokeRect(*Pixels, MarkerX, 128, 24, 32, 255, 255, 0, 255);
+    const int32 AlphaPatchWidth = FMath::Max(24, Scenario.Width / 7);
+    const int32 AlphaPatchHeight = FMath::Max(16, Scenario.Height / 8);
+    const int32 AlphaPatchX = (Scenario.Width / 2) - (AlphaPatchWidth / 2);
+    const int32 AlphaPatchY = ((Scenario.Height / 2) - (Scenario.Height / 16)) - (AlphaPatchHeight / 2);
+    FillNozzleSmokeRect(*Pixels, Scenario.Width, Scenario.Height, AlphaPatchX, AlphaPatchY, AlphaPatchWidth, AlphaPatchHeight, 255, 0, 255, 64);
+
+    const int32 MarkerTravelWidth = FMath::Max(1, Scenario.Width - NozzleSmokeMarkerWidth);
+    const int32 MarkerX = (FrameIndex * 29) % MarkerTravelWidth;
+    FillNozzleSmokeRect(*Pixels, Scenario.Width, Scenario.Height, MarkerX, NozzleSmokeMarkerY, NozzleSmokeMarkerWidth, NozzleSmokeMarkerHeight, 255, 255, 0, 255);
 
     FTextureRHIRef TextureRHI = RenderTargetResource->GetRenderTargetTexture();
     if(!TextureRHI.IsValid())
@@ -124,10 +145,10 @@ bool DrawNozzleSmokePattern(UTextureRenderTarget2D* RenderTarget, int32 FrameInd
     }
 
     ENQUEUE_RENDER_COMMAND(NozzleSmokeUpdateRenderTarget)(
-        [TextureRHI, Pixels](FRHICommandListImmediate& RHICmdList)
+        [TextureRHI, Pixels, Scenario](FRHICommandListImmediate& RHICmdList)
         {
-            const FUpdateTextureRegion2D Region(0, 0, 0, 0, NozzleSmokeWidth, NozzleSmokeHeight);
-            RHICmdList.UpdateTexture2D(TextureRHI, 0, Region, NozzleSmokeWidth * 4, Pixels->GetData());
+            const FUpdateTextureRegion2D Region(0, 0, 0, 0, Scenario.Width, Scenario.Height);
+            RHICmdList.UpdateTexture2D(TextureRHI, 0, Region, Scenario.Width * 4, Pixels->GetData());
         });
     return true;
 }
@@ -135,8 +156,9 @@ bool DrawNozzleSmokePattern(UTextureRenderTarget2D* RenderTarget, int32 FrameInd
 class FNozzleSmokePublishLatentCommand final : public IAutomationLatentCommand
 {
 public:
-    FNozzleSmokePublishLatentCommand(FAutomationTestBase* InTest, bool bInRequireStrictPass)
+    FNozzleSmokePublishLatentCommand(FAutomationTestBase* InTest, const FNozzleSmokeScenario& InScenario, bool bInRequireStrictPass)
     : Test(InTest)
+    , Scenario(InScenario)
     , bRequireStrictPass(bInRequireStrictPass)
     {}
 
@@ -185,11 +207,11 @@ public:
             RenderTarget->ClearColor = FLinearColor::Black;
             RenderTarget->bAutoGenerateMips = false;
             RenderTarget->bForceLinearGamma = true;
-            RenderTarget->InitCustomFormat(NozzleSmokeWidth, NozzleSmokeHeight, PF_B8G8R8A8, false);
+            RenderTarget->InitCustomFormat(Scenario.Width, Scenario.Height, PF_B8G8R8A8, false);
             RenderTarget->UpdateResourceImmediate(true);
 
             SenderActor->AddInstanceComponent(SenderComponent);
-            SenderComponent->SenderName = TEXT("NozzleUnrealSmoke320");
+            SenderComponent->SenderName = Scenario.SenderName;
             SenderComponent->SourceRenderTarget = RenderTarget;
             SenderComponent->RegisterComponent();
 
@@ -202,7 +224,7 @@ public:
             }
         }
 
-        if(!DrawNozzleSmokePattern(RenderTarget, PublishedFrames))
+        if(!DrawNozzleSmokePattern(RenderTarget, Scenario, PublishedFrames))
         {
             PatternUploadAttempts += 1;
             if(PatternUploadAttempts < 30)
@@ -245,7 +267,7 @@ public:
         }
 
         const bool bPublishedMultipleFrames = NozzleSmokeFrameCount <= LastRenderSequence;
-        const bool bHasExpectedSize = LastDiagnostics.Width == NozzleSmokeWidth && LastDiagnostics.Height == NozzleSmokeHeight;
+        const bool bHasExpectedSize = LastDiagnostics.Width == Scenario.Width && LastDiagnostics.Height == Scenario.Height;
         const bool bIOSurfaceBacked = LastDiagnostics.bIOSurfaceBacked && 0 < LastDiagnostics.IOSurfaceID;
         const bool bRenderDiagnosticsRunning = LastDiagnostics.State == ENozzleRuntimeState::Running && LastDiagnostics.bCanUseRuntime;
         const bool bPassCandidate = bPublishedMultipleFrames && bHasExpectedSize && bIOSurfaceBacked && bRenderDiagnosticsRunning;
@@ -269,7 +291,7 @@ public:
         }
         if(!bHasExpectedSize)
         {
-            Test->AddError(TEXT("NOZZLE_SMOKE_RESULT failed: final diagnostics did not report 320x240"));
+            Test->AddError(FString::Printf(TEXT("NOZZLE_SMOKE_RESULT failed: final diagnostics did not report %dx%d"), Scenario.Width, Scenario.Height));
         }
         if(!bIOSurfaceBacked && bRequireStrictPass)
         {
@@ -285,6 +307,7 @@ public:
 
 private:
     FAutomationTestBase* Test = nullptr;
+    FNozzleSmokeScenario Scenario;
     bool bRequireStrictPass = false;
     TObjectPtr<UTextureRenderTarget2D> RenderTarget = nullptr;
     TObjectPtr<AActor> SenderActor = nullptr;
@@ -298,24 +321,47 @@ private:
 
 } // namespace
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-    FNozzleSmokeUnrealSenderToViewerMacMetalTest,
-    "Nozzle.Smoke.MacMetal.UnrealSenderToViewer.EditorPIE.320x240",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
-
-bool FNozzleSmokeUnrealSenderToViewerMacMetalTest::RunTest(const FString& Parameters)
+bool RunNozzleSmokeUnrealSenderToViewerMacMetalTest(FAutomationTestBase& Test, const FNozzleSmokeScenario& Scenario)
 {
     if(!PLATFORM_MAC)
     {
-        AddInfo(TEXT("NOZZLE_SMOKE_RESULT skipped: Mac Metal diagnostic is not runnable on this platform"));
+        Test.AddInfo(TEXT("NOZZLE_SMOKE_RESULT skipped: Mac Metal diagnostic is not runnable on this platform"));
         return true;
     }
 
     const bool bRequireStrictPass = FParse::Param(FCommandLine::Get(), TEXT("NozzleSmokeStrictPass"));
     FAutomationEditorCommonUtils::CreateNewMap();
-    AddCommand(new FStartPIECommand(false));
-    AddCommand(new FNozzleSmokePublishLatentCommand(this, bRequireStrictPass));
-    AddCommand(new FEndPlayMapCommand());
+    Test.AddCommand(new FStartPIECommand(false));
+    Test.AddCommand(new FNozzleSmokePublishLatentCommand(&Test, Scenario, bRequireStrictPass));
+    Test.AddCommand(new FEndPlayMapCommand());
     return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FNozzleSmokeUnrealSenderToViewerMacMetal320Test,
+    "Nozzle.Smoke.MacMetal.UnrealSenderToViewer.EditorPIE.320x240",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FNozzleSmokeUnrealSenderToViewerMacMetal320Test::RunTest(const FString& Parameters)
+{
+    FNozzleSmokeScenario Scenario;
+    Scenario.Width = 320;
+    Scenario.Height = 240;
+    Scenario.SenderName = TEXT("NozzleUnrealSmoke320");
+    return RunNozzleSmokeUnrealSenderToViewerMacMetalTest(*this, Scenario);
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FNozzleSmokeUnrealSenderToViewerMacMetal641Test,
+    "Nozzle.Smoke.MacMetal.UnrealSenderToViewer.EditorPIE.641x479",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FNozzleSmokeUnrealSenderToViewerMacMetal641Test::RunTest(const FString& Parameters)
+{
+    FNozzleSmokeScenario Scenario;
+    Scenario.Width = 641;
+    Scenario.Height = 479;
+    Scenario.SenderName = TEXT("NozzleUnrealSmoke641");
+    return RunNozzleSmokeUnrealSenderToViewerMacMetalTest(*this, Scenario);
 }
 #endif
