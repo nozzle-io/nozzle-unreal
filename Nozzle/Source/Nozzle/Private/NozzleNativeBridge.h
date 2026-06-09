@@ -21,6 +21,17 @@ struct FNozzleNativeDeviceView
     void* Context = nullptr;
 };
 
+struct FNozzleMetalTextureDiagnostics
+{
+    bool bValidTexture = false;
+    bool bIOSurfaceBacked = false;
+    int64 IOSurfaceID = 0;
+    int32 Width = 0;
+    int32 Height = 0;
+    FString Details;
+    FString Message;
+};
+
 class FNozzleNativeBridge final
 {
 public:

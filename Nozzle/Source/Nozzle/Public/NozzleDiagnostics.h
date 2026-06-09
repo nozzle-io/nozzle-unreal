@@ -52,6 +52,18 @@ struct NOZZLE_API FNozzleRuntimeDiagnostics
     FString Message;
 
     UPROPERTY(BlueprintReadOnly, Category = "Nozzle")
+    FString NativeTextureDetails;
+
+    UPROPERTY(BlueprintReadOnly, Category = "Nozzle")
+    FString SynchronizationBoundary;
+
+    UPROPERTY(BlueprintReadOnly, Category = "Nozzle")
+    bool bIOSurfaceBacked = false;
+
+    UPROPERTY(BlueprintReadOnly, Category = "Nozzle")
+    int64 IOSurfaceID = 0;
+
+    UPROPERTY(BlueprintReadOnly, Category = "Nozzle")
     int32 Width = 0;
 
     UPROPERTY(BlueprintReadOnly, Category = "Nozzle")

@@ -40,11 +40,19 @@
 
 #if NOZZLE_UNREAL_TARGET_MAC
 extern bool NozzleUnrealExtractMetalDeviceFromNativeTexture(void* NativeTexture, void*& OutDevice);
+extern FNozzleMetalTextureDiagnostics NozzleUnrealDescribeMetalTexture(void* NativeTexture);
 #else
 static bool NozzleUnrealExtractMetalDeviceFromNativeTexture(void* NativeTexture, void*& OutDevice)
 {
     OutDevice = nullptr;
     return false;
+}
+
+static FNozzleMetalTextureDiagnostics NozzleUnrealDescribeMetalTexture(void* NativeTexture)
+{
+    FNozzleMetalTextureDiagnostics Diagnostics;
+    Diagnostics.Message = TEXT("Metal texture diagnostics are only available on macOS builds");
+    return Diagnostics;
 }
 #endif
 
@@ -119,7 +127,8 @@ FNozzleRuntimeDiagnostics FNozzleNativeBridge::MakeRuntimeDiagnostics()
     else if(bCanUseMetal)
     {
         Diagnostics.Backend = TEXT("Metal");
-        Diagnostics.TransferMode = TEXT("Metal native texture path using Unreal's native device; IOSurface backing, synchronization, and runtime smoke are not yet proven");
+        Diagnostics.TransferMode = TEXT("Metal native texture path using Unreal's native device; direct publish requires an IOSurface-backed id<MTLTexture>");
+        Diagnostics.SynchronizationBoundary = TEXT("render-thread command enqueue followed by nozzle direct native texture publish; no explicit Metal command-buffer completion is proven yet");
     }
     else
     {
@@ -188,6 +197,16 @@ bool FNozzleNativeBridge::CaptureNativeTexture_RenderThread(FTextureRenderTarget
 
     OutDiagnostics.State = ENozzleRuntimeState::Ready;
     OutDiagnostics.Message = TEXT("captured native texture pointer from FRHITexture::GetNativeResource on the render thread");
+
+    if(OutDiagnostics.bMetalRHI)
+    {
+        const FNozzleMetalTextureDiagnostics MetalDiagnostics = NozzleUnrealDescribeMetalTexture(OutView.NativeTexture);
+        OutDiagnostics.NativeTextureDetails = MetalDiagnostics.Details;
+        OutDiagnostics.bIOSurfaceBacked = MetalDiagnostics.bIOSurfaceBacked;
+        OutDiagnostics.IOSurfaceID = MetalDiagnostics.IOSurfaceID;
+        OutDiagnostics.Message = FString::Printf(TEXT("%s; %s"), *OutDiagnostics.Message, *MetalDiagnostics.Message);
+    }
+
     return true;
 }
 
@@ -338,6 +357,15 @@ int32 FNozzleNativeBridge::PublishNativeTexture_RenderThread(NozzleSender* Sende
         return static_cast<int32>(-1);
     }
 
+    if(OutDiagnostics.bMetalRHI)
+    {
+        const FNozzleMetalTextureDiagnostics MetalDiagnostics = NozzleUnrealDescribeMetalTexture(TextureView.NativeTexture);
+        OutDiagnostics.NativeTextureDetails = MetalDiagnostics.Details;
+        OutDiagnostics.bIOSurfaceBacked = MetalDiagnostics.bIOSurfaceBacked;
+        OutDiagnostics.IOSurfaceID = MetalDiagnostics.IOSurfaceID;
+        OutDiagnostics.SynchronizationBoundary = TEXT("render-thread command execution reaches nozzle_sender_publish_native_texture_ex; no explicit Metal command-buffer completion or shared event is proven");
+    }
+
 #if WITH_NOZZLE_CORE
     NozzleErrorCode Error = NOZZLE_ERROR_UNSUPPORTED_BACKEND;
     if(OutDiagnostics.bD3D11RHI)
@@ -351,7 +379,10 @@ int32 FNozzleNativeBridge::PublishNativeTexture_RenderThread(NozzleSender* Sende
 
     if(Error != NOZZLE_OK)
     {
-        ApplyError(OutDiagnostics, FString::Printf(TEXT("nozzle native texture publish failed with error code %d"), static_cast<int32>(Error)));
+        ApplyError(OutDiagnostics, FString::Printf(
+            TEXT("nozzle native texture publish failed with error code %d; %s"),
+            static_cast<int32>(Error),
+            *OutDiagnostics.NativeTextureDetails));
         return static_cast<int32>(Error);
     }
 

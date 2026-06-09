@@ -39,6 +39,7 @@ public class Nozzle : ModuleRules
         else if(Target.Platform == UnrealTargetPlatform.Mac)
         {
             PrivateDependencyModuleNames.Add("MetalRHI");
+            PublicFrameworks.Add("IOSurface");
             PublicDefinitions.Add("NOZZLE_UNREAL_TARGET_WIN64=0");
             PublicDefinitions.Add("NOZZLE_UNREAL_TARGET_MAC=1");
             PublicDefinitions.Add("NOZZLE_UNREAL_PHASE0_RHI_D3D11=0");
