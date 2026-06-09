@@ -1290,6 +1290,34 @@ bool FNozzleSmokeViewerToUnrealReceiverMacMetal641Test::RunTest(const FString& P
     return RunNozzleSmokeViewerToUnrealReceiverMacMetalTest(*this, Scenario);
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FNozzleSmokeMixerToUnrealReceiverMacMetal320Test,
+    "Nozzle.Smoke.MacMetal.MixerToUnrealReceiver.EditorPIE.320x240",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FNozzleSmokeMixerToUnrealReceiverMacMetal320Test::RunTest(const FString& Parameters)
+{
+    FNozzleSmokeScenario Scenario;
+    Scenario.Width = 320;
+    Scenario.Height = 240;
+    Scenario.SenderName = TEXT("NozzleMixerSmoke320");
+    return RunNozzleSmokeViewerToUnrealReceiverMacMetalTest(*this, Scenario);
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FNozzleSmokeMixerToUnrealReceiverMacMetal641Test,
+    "Nozzle.Smoke.MacMetal.MixerToUnrealReceiver.EditorPIE.641x479",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FNozzleSmokeMixerToUnrealReceiverMacMetal641Test::RunTest(const FString& Parameters)
+{
+    FNozzleSmokeScenario Scenario;
+    Scenario.Width = 641;
+    Scenario.Height = 479;
+    Scenario.SenderName = TEXT("NozzleMixerSmoke641");
+    return RunNozzleSmokeViewerToUnrealReceiverMacMetalTest(*this, Scenario);
+}
+
 #endif
 
 class FNozzleSmokeModule final : public FDefaultGameModuleImpl

@@ -191,10 +191,17 @@ def check_sample_project() -> None:
     require_file(ROOT / "Samples" / "NozzleSmoke" / "Content" / "NozzleSmoke" / "NozzleSmokeReceiverMaterial.uasset")
     require_text(ROOT / "Samples" / "NozzleSmoke" / "Source" / "NozzleSmoke" / "NozzleSmoke.cpp", "/Game/NozzleSmoke/NozzleSmokeReceiverMaterial.NozzleSmokeReceiverMaterial")
     require_text(ROOT / "Samples" / "NozzleSmoke" / "Source" / "NozzleSmoke" / "NozzleSmoke.cpp", "NozzleSmokePackagedReceiver")
+    require_text(ROOT / "Samples" / "NozzleSmoke" / "Source" / "NozzleSmoke" / "NozzleSmoke.cpp", "Nozzle.Smoke.MacMetal.MixerToUnrealReceiver.EditorPIE.320x240")
+    require_text(ROOT / "Samples" / "NozzleSmoke" / "Source" / "NozzleSmoke" / "NozzleSmoke.cpp", "NozzleMixerSmoke320")
+    require_text(ROOT / "Samples" / "NozzleSmoke" / "Source" / "NozzleSmoke" / "NozzleSmoke.cpp", "Nozzle.Smoke.MacMetal.MixerToUnrealReceiver.EditorPIE.641x479")
+    require_text(ROOT / "Samples" / "NozzleSmoke" / "Source" / "NozzleSmoke" / "NozzleSmoke.cpp", "NozzleMixerSmoke641")
     require_text(ROOT / "Samples" / "NozzleSmoke" / "Source" / "NozzleSmoke" / "NozzleSmoke.cpp", "nozzle_frame_copy_to_native_texture")
     require_text(ROOT / "Samples" / "NozzleSmoke" / "README.md", "not runtime evidence")
     require_text(ROOT / "Samples" / "NozzleSmoke" / "README.md", "-NozzleSmokePackagedReceiver")
     require_text(ROOT / "Samples" / "NozzleSmoke" / "README.md", "NOZZLE_RECEIVER_SMOKE_RESULT packaged=1 row_status=PASS_CANDIDATE")
+    require_text(ROOT / "Samples" / "NozzleSmoke" / "README.md", "Nozzle.Smoke.MacMetal.MixerToUnrealReceiver.EditorPIE.320x240")
+    require_text(ROOT / "Samples" / "NozzleSmoke" / "README.md", "NozzleMixerSmoke320")
+    require_text(ROOT / "Samples" / "NozzleSmoke" / "README.md", "role=mixer_forwarder")
 
 
 

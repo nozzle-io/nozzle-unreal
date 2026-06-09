@@ -229,3 +229,62 @@ details containing `receiver_target=FRHITexture::GetNativeResource`,
 `nozzle_frame_copy_to_native_texture` and the Metal backend copy wait. Timeout or
 `row_status=MISSING` is always a failure for the packaged receiver/material
 harness, even without `-NozzleSmokeStrictPass`.
+
+## Mixer-produced source receiver/material smoke
+
+The mixer receiver/material rows must prove that Unreal consumes the source
+published by `nozzle-mixer`, not the original viewer sender. Use the dedicated
+Editor PIE automation tests:
+
+```text
+Nozzle.Smoke.MacMetal.MixerToUnrealReceiver.EditorPIE.320x240
+Nozzle.Smoke.MacMetal.MixerToUnrealReceiver.EditorPIE.641x479
+```
+
+Start a deterministic viewer sender, then run `nozzle-mixer --smoke-forward` in
+Cut A mode so it republishes a new source. The output name must match the Unreal
+automation test (`NozzleMixerSmoke320` or `NozzleMixerSmoke641`):
+
+```sh
+/path/to/nozzle-viewer \
+  --smoke-sender \
+  --source NozzleViewerSmoke320 \
+  --width 320 \
+  --height 240 \
+  --frames 1200 \
+  --interval-ms 16 \
+  --evidence /tmp/nozzle-unreal-mixer-input-viewer-320.json
+
+/path/to/nozzle-mixer \
+  --smoke-forward \
+  --source NozzleViewerSmoke320 \
+  --output NozzleMixerSmoke320 \
+  --width 320 \
+  --height 240 \
+  --min-frames 5 \
+  --publish-frames 1200 \
+  --timeout-ms 120000 \
+  --hold-ms 120000 \
+  --evidence /tmp/nozzle-unreal-mixer-forward-320.json
+```
+
+Then run the Unreal Editor automation while the mixer output is still held:
+
+```sh
+'/Users/Shared/Epic Games/UE_5.7/Engine/Binaries/Mac/UnrealEditor.app/Contents/MacOS/UnrealEditor' \
+  '/path/to/nozzle-unreal/Samples/NozzleSmoke/NozzleSmoke.uproject' \
+  -unattended -nop4 -nosplash -stdout -FullStdOutLogOutput \
+  -NozzleSmokeStrictPass \
+  -ExecCmds='Automation RunTests Nozzle.Smoke.MacMetal.MixerToUnrealReceiver.EditorPIE.320x240' \
+  -TestExit='Automation Test Queue Empty'
+```
+
+Required evidence is stricter than the viewer-to-Unreal receiver rows: the mixer
+JSON must show `role=mixer_forwarder`, `output.name=NozzleMixerSmoke320`,
+`gpu_path.mode=Cut A`, `gpu_path.cpu_readback_used_by_mixer=false`,
+`gpu_path.compositor_backend=Metal`, and input sender metadata proving the mixer
+read `NozzleViewerSmoke320`. The Unreal log must show
+`NOZZLE_RECEIVER_SMOKE_START source='NozzleMixerSmoke320'` and a
+`NOZZLE_RECEIVER_SMOKE_RESULT row_status=PASS_CANDIDATE` with material RGB,
+direct receiver-target RGBA, explicit `nozzle_frame_to_unreal_metal_texture`,
+and the `nozzle_frame_copy_to_native_texture` sync boundary.
