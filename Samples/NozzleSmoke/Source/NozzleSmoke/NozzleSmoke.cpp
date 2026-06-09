@@ -807,8 +807,8 @@ public:
         const bool bMetalRHI = RenderDiagnostics.bMetalRHI && RenderDiagnostics.Backend == TEXT("Metal");
         const bool bNativeDetailsOk = RenderDiagnostics.NativeTextureDetails.Contains(TEXT("receiver_target=FRHITexture::GetNativeResource"))
             && RenderDiagnostics.NativeTextureDetails.Contains(TEXT("MTLPixelFormat=81"))
-            && RenderDiagnostics.NativeTextureDetails.Contains(TEXT("width=320"))
-            && RenderDiagnostics.NativeTextureDetails.Contains(TEXT("height=240"));
+            && RenderDiagnostics.NativeTextureDetails.Contains(FString::Printf(TEXT("width=%d"), Scenario.Width))
+            && RenderDiagnostics.NativeTextureDetails.Contains(FString::Printf(TEXT("height=%d"), Scenario.Height));
         const bool bTransferPathNamed = RenderDiagnostics.TransferMode == TEXT("nozzle_frame_to_unreal_metal_texture") && bNativeDetailsOk;
         const bool bSyncBoundaryNamed = !RenderDiagnostics.SynchronizationBoundary.IsEmpty();
         const bool bMarkerMoved = 1 < MarkerXs.Num();
@@ -981,6 +981,20 @@ bool FNozzleSmokeViewerToUnrealReceiverMacMetal320Test::RunTest(const FString& P
     Scenario.Width = 320;
     Scenario.Height = 240;
     Scenario.SenderName = TEXT("NozzleViewerSmoke320");
+    return RunNozzleSmokeViewerToUnrealReceiverMacMetalTest(*this, Scenario);
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FNozzleSmokeViewerToUnrealReceiverMacMetal641Test,
+    "Nozzle.Smoke.MacMetal.ViewerToUnrealReceiver.EditorPIE.641x479",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FNozzleSmokeViewerToUnrealReceiverMacMetal641Test::RunTest(const FString& Parameters)
+{
+    FNozzleSmokeScenario Scenario;
+    Scenario.Width = 641;
+    Scenario.Height = 479;
+    Scenario.SenderName = TEXT("NozzleViewerSmoke641");
     return RunNozzleSmokeViewerToUnrealReceiverMacMetalTest(*this, Scenario);
 }
 
