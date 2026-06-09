@@ -191,12 +191,12 @@ public:
         UWorld* GameWorld = FindNozzleSmokeGameWorld();
         if(GameWorld == nullptr)
         {
-            Attempts += 1;
-            if(Attempts < 120)
+            const double ElapsedSeconds = FPlatformTime::Seconds() - StartSeconds;
+            if(ElapsedSeconds < GameWorldTimeoutSeconds)
             {
                 return true;
             }
-            Finish(false, TEXT("game world was not available"));
+            Finish(false, *FString::Printf(TEXT("game world was not available after %.2f seconds"), ElapsedSeconds));
             return false;
         }
 
@@ -316,7 +316,8 @@ private:
     TObjectPtr<UNozzleSenderComponent> SenderComponent = nullptr;
     FNozzleRuntimeDiagnostics LastDiagnostics;
     int64 LastRenderSequence = 0;
-    int32 Attempts = 0;
+    double StartSeconds = FPlatformTime::Seconds();
+    static constexpr double GameWorldTimeoutSeconds = 60.0;
     int32 PatternUploadAttempts = 0;
     int32 PublishedFrames = 0;
 };
