@@ -44,7 +44,7 @@ Do not mark any row PASS without command output, logs, screenshots or captured f
 | nozzle-mixer -> Unreal receiver/material | Packaged Development | 320x240 | Metal RHI, IOSurface-backed target proof, render target update, no flip, no R/B swap, mixer output source selected | MISSING |
 | nozzle-mixer -> Unreal receiver/material | Packaged Development | 641x479 | Metal RHI, IOSurface-backed target proof, render target update, no flip, no R/B swap, mixer output source selected | MISSING |
 
-Note: the PASS rows above are limited to the macOS Metal rows proven separately: Unreal-sender-to-nozzle-viewer for Editor PIE 320x240, Editor PIE 641x479, Packaged Development 320x240, and Packaged Development 641x479; plus Unreal-sender-to-nozzle-mixer Editor PIE 320x240, Editor PIE 641x479, and Packaged Development 320x240 through the headless smoke-forward path and downstream viewer oracle. They do not prove GUI mixer preview, packaged mixer forwarding for 641x479, Unreal receiver/material rows, Win64 D3D11, or broad macOS Metal support; those rows remain MISSING until separately proven.
+Note: the PASS rows above are limited to the macOS Metal rows proven separately: Unreal-sender-to-nozzle-viewer for Editor PIE 320x240, Editor PIE 641x479, Packaged Development 320x240, and Packaged Development 641x479; plus Unreal-sender-to-nozzle-mixer Editor PIE 320x240, Editor PIE 641x479, Packaged Development 320x240, and Packaged Development 641x479 through the headless smoke-forward path and downstream viewer oracle. They do not prove GUI mixer preview, Unreal receiver/material rows, Win64 D3D11, or broad macOS Metal support; those rows remain MISSING until separately proven.
 
 Every PASS record must include:
 
