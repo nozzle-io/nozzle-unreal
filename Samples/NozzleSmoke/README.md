@@ -36,13 +36,20 @@ sequence.
      -NoHotReload
    ```
 
-4. Run the Editor PIE diagnostic:
+4. Run the Editor PIE diagnostic. Pick the automation row matching the
+   receiver dimensions you will capture:
 
    ```sh
    '/Users/Shared/Epic Games/UE_5.7/Engine/Binaries/Mac/UnrealEditor.app/Contents/MacOS/UnrealEditor' \
      '/path/to/nozzle-unreal/Samples/NozzleSmoke/NozzleSmoke.uproject' \
      -unattended -nop4 -nosplash -stdout -FullStdOutLogOutput \
      -ExecCmds='Automation RunTests Nozzle.Smoke.MacMetal.UnrealSenderToViewer.EditorPIE.320x240' \
+     -TestExit='Automation Test Queue Empty'
+
+   '/Users/Shared/Epic Games/UE_5.7/Engine/Binaries/Mac/UnrealEditor.app/Contents/MacOS/UnrealEditor' \
+     '/path/to/nozzle-unreal/Samples/NozzleSmoke/NozzleSmoke.uproject' \
+     -unattended -nop4 -nosplash -stdout -FullStdOutLogOutput \
+     -ExecCmds='Automation RunTests Nozzle.Smoke.MacMetal.UnrealSenderToViewer.EditorPIE.641x479' \
      -TestExit='Automation Test Queue Empty'
    ```
 
@@ -91,10 +98,11 @@ The viewer evidence must report at least five distinct frame indices in
 `frame.observed_marker_samples`, `checks.moving_marker=PASS`, and
 `checks.distinct_frames=PASS`. Marker evidence is valid only when at least five
 distinct frames have PASS samples with changing `x` positions and each sample
-records `expected_rgba`, `actual_rgba`, and `passed`. The alpha patch sample at
-`x=160,y=105` must appear as RGBA `[255,0,255,64]` via
-`samples[].expected_rgba` / `samples[].actual_rgba`. A single correct-looking
-frame is not freshness evidence.
+records `expected_rgba`, `actual_rgba`, and `passed`. The alpha patch sample
+must appear as RGBA `[255,0,255,64]` via `samples[].expected_rgba` /
+`samples[].actual_rgba`; the expected sample coordinate is `x=160,y=105` for
+320x240 and `x=320,y=210` for 641x479. A single correct-looking frame is not
+freshness evidence.
 
 ## Evidence boundary
 
