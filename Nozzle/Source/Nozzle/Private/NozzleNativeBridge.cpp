@@ -40,7 +40,9 @@
 
 #if NOZZLE_UNREAL_TARGET_MAC
 extern bool NozzleUnrealExtractMetalDeviceFromNativeTexture(void* NativeTexture, void*& OutDevice);
-extern FNozzleMetalTextureDiagnostics NozzleUnrealDescribeMetalTexture(void* NativeTexture);
+extern FNozzleMetalTextureDiagnostics NozzleUnrealDescribeMetalTexture(void* NativeTexture, const TCHAR* TextureLabel);
+extern bool NozzleUnrealPrepareMetalPublishTexture(const FNozzleNativeTextureView& SourceTextureView, const FNozzleNativeDeviceView& DeviceView, FNozzleMetalIntermediateTextureCache& Cache, FNozzleNativeTextureView& OutPublishTextureView, FNozzleRuntimeDiagnostics& OutDiagnostics);
+extern void NozzleUnrealReleaseMetalIntermediateTextureCache(FNozzleMetalIntermediateTextureCache& Cache);
 #else
 static bool NozzleUnrealExtractMetalDeviceFromNativeTexture(void* NativeTexture, void*& OutDevice)
 {
@@ -48,11 +50,24 @@ static bool NozzleUnrealExtractMetalDeviceFromNativeTexture(void* NativeTexture,
     return false;
 }
 
-static FNozzleMetalTextureDiagnostics NozzleUnrealDescribeMetalTexture(void* NativeTexture)
+static FNozzleMetalTextureDiagnostics NozzleUnrealDescribeMetalTexture(void* NativeTexture, const TCHAR*)
 {
     FNozzleMetalTextureDiagnostics Diagnostics;
     Diagnostics.Message = TEXT("Metal texture diagnostics are only available on macOS builds");
     return Diagnostics;
+}
+
+static bool NozzleUnrealPrepareMetalPublishTexture(const FNozzleNativeTextureView&, const FNozzleNativeDeviceView&, FNozzleMetalIntermediateTextureCache&, FNozzleNativeTextureView&, FNozzleRuntimeDiagnostics& OutDiagnostics)
+{
+    OutDiagnostics.State = ENozzleRuntimeState::Error;
+    OutDiagnostics.bCanUseRuntime = false;
+    OutDiagnostics.Message = TEXT("Metal IOSurface publish preparation is only available on macOS builds");
+    return false;
+}
+
+static void NozzleUnrealReleaseMetalIntermediateTextureCache(FNozzleMetalIntermediateTextureCache& Cache)
+{
+    Cache = FNozzleMetalIntermediateTextureCache{};
 }
 #endif
 
@@ -186,6 +201,8 @@ bool FNozzleNativeBridge::CaptureNativeTexture_RenderThread(FTextureRenderTarget
     const FIntPoint Size = RenderTargetResource->GetSizeXY();
     OutView.Width = Size.X;
     OutView.Height = Size.Y;
+    OutView.TransferMode = TEXT("unreal_native_texture_source_direct");
+    OutView.SynchronizationBoundary = TEXT("render-thread command captured FRHITexture::GetNativeResource; no Metal command-buffer completion is proven at capture time");
 
     OutDiagnostics.Width = OutView.Width;
     OutDiagnostics.Height = OutView.Height;
@@ -200,7 +217,7 @@ bool FNozzleNativeBridge::CaptureNativeTexture_RenderThread(FTextureRenderTarget
 
     if(OutDiagnostics.bMetalRHI)
     {
-        const FNozzleMetalTextureDiagnostics MetalDiagnostics = NozzleUnrealDescribeMetalTexture(OutView.NativeTexture);
+        const FNozzleMetalTextureDiagnostics MetalDiagnostics = NozzleUnrealDescribeMetalTexture(OutView.NativeTexture, TEXT("source=FRHITexture::GetNativeResource"));
         OutDiagnostics.NativeTextureDetails = MetalDiagnostics.Details;
         OutDiagnostics.bIOSurfaceBacked = MetalDiagnostics.bIOSurfaceBacked;
         OutDiagnostics.IOSurfaceID = MetalDiagnostics.IOSurfaceID;
@@ -273,6 +290,46 @@ bool FNozzleNativeBridge::CaptureNativeTextureAndDevice_RenderThread(FTextureRen
 
     ApplyError(OutDiagnostics, UnsupportedRHIMessage());
     return false;
+}
+
+bool FNozzleNativeBridge::PreparePublishTexture_RenderThread(const FNozzleNativeTextureView& SourceTextureView, const FNozzleNativeDeviceView& DeviceView, FNozzleMetalIntermediateTextureCache& MetalIntermediateCache, FNozzleNativeTextureView& OutPublishTextureView, FNozzleRuntimeDiagnostics& OutDiagnostics)
+{
+    OutDiagnostics = MakeRuntimeDiagnostics();
+    OutPublishTextureView = FNozzleNativeTextureView{};
+    if(!OutDiagnostics.bCanUseRuntime)
+    {
+        return false;
+    }
+
+    if(OutDiagnostics.bMetalRHI)
+    {
+        const bool bPrepared = NozzleUnrealPrepareMetalPublishTexture(SourceTextureView, DeviceView, MetalIntermediateCache, OutPublishTextureView, OutDiagnostics);
+        if(!bPrepared)
+        {
+            ApplyError(OutDiagnostics, OutDiagnostics.Message.IsEmpty() ? TEXT("Metal IOSurface publish preparation failed") : OutDiagnostics.Message);
+        }
+        else
+        {
+            OutDiagnostics.State = ENozzleRuntimeState::Ready;
+            OutDiagnostics.bCanUseRuntime = true;
+        }
+        return bPrepared;
+    }
+
+    OutPublishTextureView = SourceTextureView;
+    OutDiagnostics.State = ENozzleRuntimeState::Ready;
+    OutDiagnostics.bCanUseRuntime = true;
+    OutDiagnostics.Width = SourceTextureView.Width;
+    OutDiagnostics.Height = SourceTextureView.Height;
+    OutDiagnostics.TransferMode = SourceTextureView.TransferMode;
+    OutDiagnostics.SynchronizationBoundary = SourceTextureView.SynchronizationBoundary;
+    OutDiagnostics.Message = TEXT("native source texture is used directly for publish preparation on this RHI");
+    return true;
+}
+
+void FNozzleNativeBridge::ReleaseMetalIntermediateTextureCache_RenderThread(FNozzleMetalIntermediateTextureCache& MetalIntermediateCache)
+{
+    NozzleUnrealReleaseMetalIntermediateTextureCache(MetalIntermediateCache);
 }
 
 int32 FNozzleNativeBridge::CreateSenderForNativeDevice_RenderThread(const FString& SenderName, const FNozzleNativeDeviceView& DeviceView, NozzleSender*& InOutSender, FNozzleRuntimeDiagnostics& OutDiagnostics)
@@ -359,11 +416,14 @@ int32 FNozzleNativeBridge::PublishNativeTexture_RenderThread(NozzleSender* Sende
 
     if(OutDiagnostics.bMetalRHI)
     {
-        const FNozzleMetalTextureDiagnostics MetalDiagnostics = NozzleUnrealDescribeMetalTexture(TextureView.NativeTexture);
+        const FNozzleMetalTextureDiagnostics MetalDiagnostics = NozzleUnrealDescribeMetalTexture(TextureView.NativeTexture, TEXT("publish_texture"));
         OutDiagnostics.NativeTextureDetails = MetalDiagnostics.Details;
         OutDiagnostics.bIOSurfaceBacked = MetalDiagnostics.bIOSurfaceBacked;
         OutDiagnostics.IOSurfaceID = MetalDiagnostics.IOSurfaceID;
-        OutDiagnostics.SynchronizationBoundary = TEXT("render-thread command execution reaches nozzle_sender_publish_native_texture_ex; no explicit Metal command-buffer completion or shared event is proven");
+        OutDiagnostics.TransferMode = TextureView.TransferMode.IsEmpty() ? TEXT("unreal_metal_native_texture_to_nozzle_ring") : TextureView.TransferMode;
+        OutDiagnostics.SynchronizationBoundary = TextureView.SynchronizationBoundary.IsEmpty()
+            ? TEXT("render-thread command execution reaches nozzle_sender_publish_native_texture_ex; no explicit Metal command-buffer completion or shared event is proven")
+            : TextureView.SynchronizationBoundary;
     }
 
 #if WITH_NOZZLE_CORE
@@ -389,7 +449,9 @@ int32 FNozzleNativeBridge::PublishNativeTexture_RenderThread(NozzleSender* Sende
     OutDiagnostics.State = ENozzleRuntimeState::Running;
     OutDiagnostics.Width = TextureView.Width;
     OutDiagnostics.Height = TextureView.Height;
-    OutDiagnostics.Message = TEXT("published Unreal native texture through the shared native bridge seam");
+    OutDiagnostics.Message = OutDiagnostics.bMetalRHI
+        ? TEXT("published Unreal Metal texture through IOSurface-backed publish preparation and the shared native bridge seam")
+        : TEXT("published Unreal native texture through the shared native bridge seam");
     return static_cast<int32>(NOZZLE_OK);
 #else
     OutDiagnostics.State = ENozzleRuntimeState::Unavailable;

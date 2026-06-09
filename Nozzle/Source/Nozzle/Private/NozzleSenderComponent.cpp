@@ -20,6 +20,7 @@ struct FNozzleSenderRenderState
     bool bHasPendingDiagnostics = false;
     int64 CompletedRenderSequence = 0;
     FNozzleRuntimeDiagnostics PendingDiagnostics;
+    FNozzleMetalIntermediateTextureCache MetalIntermediateCache;
 };
 
 namespace
@@ -150,11 +151,19 @@ void UNozzleSenderComponent::StopSender()
         }
         FlushRenderingCommands();
 
+        FNozzleMetalIntermediateTextureCache MetalIntermediateCacheToRelease;
+
         NozzleSender* SenderToDestroy = nullptr;
         {
             FScopeLock Lock(&LocalRenderState->Mutex);
             SenderToDestroy = LocalRenderState->SenderHandle;
             LocalRenderState->SenderHandle = nullptr;
+            MetalIntermediateCacheToRelease = LocalRenderState->MetalIntermediateCache;
+            LocalRenderState->MetalIntermediateCache = FNozzleMetalIntermediateTextureCache{};
+        }
+        if(MetalIntermediateCacheToRelease.Texture != nullptr || MetalIntermediateCacheToRelease.Surface != nullptr || MetalIntermediateCacheToRelease.CommandQueue != nullptr)
+        {
+            FNozzleNativeBridge::ReleaseMetalIntermediateTextureCache_RenderThread(MetalIntermediateCacheToRelease);
         }
         if(SenderToDestroy != nullptr)
         {
@@ -266,7 +275,20 @@ bool UNozzleSenderComponent::PublishFrame()
                 return;
             }
 
-            const int32 PublishError = FNozzleNativeBridge::PublishNativeTexture_RenderThread(LocalSenderHandle, NativeView, RenderThreadDiagnostics);
+            if(RenderThreadDiagnostics.bMetalRHI)
+            {
+                RHICmdList.SubmitAndBlockUntilGPUIdle();
+            }
+
+            FNozzleNativeTextureView PublishView;
+            if(!FNozzleNativeBridge::PreparePublishTexture_RenderThread(NativeView, DeviceView, LocalRenderState->MetalIntermediateCache, PublishView, RenderThreadDiagnostics))
+            {
+                StoreSenderRenderDiagnostics(LocalRenderState, RenderThreadDiagnostics);
+                UE_LOG(LogNozzle, Error, TEXT("native texture publish preparation failed: %s"), *RenderThreadDiagnostics.Message);
+                return;
+            }
+
+            const int32 PublishError = FNozzleNativeBridge::PublishNativeTexture_RenderThread(LocalSenderHandle, PublishView, RenderThreadDiagnostics);
             StoreSenderRenderDiagnostics(LocalRenderState, RenderThreadDiagnostics);
             if(PublishError != 0)
             {

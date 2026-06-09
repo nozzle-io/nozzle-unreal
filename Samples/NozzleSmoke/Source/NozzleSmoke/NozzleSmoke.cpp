@@ -1,12 +1,11 @@
 #include "NozzleSmoke.h"
 
 #if WITH_DEV_AUTOMATION_TESTS && WITH_EDITOR
-#include "CanvasItem.h"
-#include "CanvasTypes.h"
 #include "Editor.h"
 #include "Misc/AutomationTest.h"
 #include "NozzleDiagnostics.h"
 #include "NozzleSenderComponent.h"
+#include "RHICommandList.h"
 #include "RenderingThread.h"
 #include "Tests/AutomationEditorCommon.h"
 #include "Engine/TextureRenderTarget2D.h"
@@ -28,10 +27,11 @@ constexpr int32 NozzleSmokeFrameCount = 180;
 FString NozzleSmokeDiagnosticsToString(const FNozzleRuntimeDiagnostics& Diagnostics)
 {
     return FString::Printf(
-        TEXT("state=%d can_use_runtime=%d backend='%s' width=%d height=%d message='%s' native='%s' sync='%s' iosurface_backed=%d iosurface_id=%llu"),
+        TEXT("state=%d can_use_runtime=%d backend='%s' transfer='%s' width=%d height=%d message='%s' native='%s' sync='%s' iosurface_backed=%d iosurface_id=%llu"),
         static_cast<int32>(Diagnostics.State),
         Diagnostics.bCanUseRuntime ? 1 : 0,
         *Diagnostics.Backend,
+        *Diagnostics.TransferMode,
         Diagnostics.Width,
         Diagnostics.Height,
         *Diagnostics.Message,
@@ -69,44 +69,67 @@ UWorld* FindNozzleSmokePIEWorld()
     return FoundPIEWorld;
 }
 
-void DrawNozzleSmokePattern(UWorld* World, UTextureRenderTarget2D* RenderTarget, int32 FrameIndex)
+void FillNozzleSmokeRect(TArray<uint8>& Pixels, int32 X, int32 Y, int32 Width, int32 Height, uint8 Red, uint8 Green, uint8 Blue, uint8 Alpha)
 {
-    if(World == nullptr || RenderTarget == nullptr)
+    for(int32 Row = Y; Row < Y + Height; Row++)
     {
-        return;
+        for(int32 Column = X; Column < X + Width; Column++)
+        {
+            const int32 Offset = ((Row * NozzleSmokeWidth) + Column) * 4;
+            Pixels[Offset + 0] = Blue;
+            Pixels[Offset + 1] = Green;
+            Pixels[Offset + 2] = Red;
+            Pixels[Offset + 3] = Alpha;
+        }
+    }
+}
+
+bool DrawNozzleSmokePattern(UTextureRenderTarget2D* RenderTarget, int32 FrameIndex)
+{
+    if(RenderTarget == nullptr)
+    {
+        return false;
     }
 
     FTextureRenderTargetResource* RenderTargetResource = RenderTarget->GameThread_GetRenderTargetResource();
     if(RenderTargetResource == nullptr)
     {
-        return;
+        return false;
     }
 
-    FCanvas Canvas(RenderTargetResource, nullptr, World, World->GetFeatureLevel());
-    Canvas.Clear(FLinearColor(0.02f, 0.02f, 0.02f, 1.0f));
+    TSharedRef<TArray<uint8>, ESPMode::ThreadSafe> Pixels = MakeShared<TArray<uint8>, ESPMode::ThreadSafe>();
+    Pixels->SetNumZeroed(NozzleSmokeWidth * NozzleSmokeHeight * 4);
+    for(int32 Index = 0; Index < NozzleSmokeWidth * NozzleSmokeHeight; Index++)
+    {
+        const int32 Offset = Index * 4;
+        (*Pixels)[Offset + 0] = 5;
+        (*Pixels)[Offset + 1] = 5;
+        (*Pixels)[Offset + 2] = 5;
+        (*Pixels)[Offset + 3] = 255;
+    }
 
-    FCanvasTileItem TopLeft(FVector2D(0.0f, 0.0f), FVector2D(96.0f, 72.0f), FLinearColor(1.0f, 0.0f, 0.0f, 1.0f));
-    TopLeft.BlendMode = SE_BLEND_Opaque;
-    Canvas.DrawItem(TopLeft);
+    FillNozzleSmokeRect(*Pixels, 0, 0, 96, 72, 255, 0, 0, 255);
+    FillNozzleSmokeRect(*Pixels, 224, 0, 96, 72, 0, 255, 0, 255);
+    FillNozzleSmokeRect(*Pixels, 0, 168, 96, 72, 0, 0, 255, 255);
+    FillNozzleSmokeRect(*Pixels, 224, 168, 96, 72, 255, 255, 255, 255);
+    FillNozzleSmokeRect(*Pixels, 136, 84, 48, 32, 255, 0, 255, 64);
 
-    FCanvasTileItem TopRight(FVector2D(224.0f, 0.0f), FVector2D(96.0f, 72.0f), FLinearColor(0.0f, 1.0f, 0.0f, 1.0f));
-    TopRight.BlendMode = SE_BLEND_Opaque;
-    Canvas.DrawItem(TopRight);
+    const int32 MarkerX = (FrameIndex * 29) % (NozzleSmokeWidth - 24);
+    FillNozzleSmokeRect(*Pixels, MarkerX, 128, 24, 32, 255, 255, 0, 255);
 
-    FCanvasTileItem BottomLeft(FVector2D(0.0f, 168.0f), FVector2D(96.0f, 72.0f), FLinearColor(0.0f, 0.0f, 1.0f, 1.0f));
-    BottomLeft.BlendMode = SE_BLEND_Opaque;
-    Canvas.DrawItem(BottomLeft);
+    FTextureRHIRef TextureRHI = RenderTargetResource->GetRenderTargetTexture();
+    if(!TextureRHI.IsValid())
+    {
+        return false;
+    }
 
-    FCanvasTileItem BottomRight(FVector2D(224.0f, 168.0f), FVector2D(96.0f, 72.0f), FLinearColor(1.0f, 1.0f, 1.0f, 1.0f));
-    BottomRight.BlendMode = SE_BLEND_Opaque;
-    Canvas.DrawItem(BottomRight);
-
-    const float MarkerX = static_cast<float>((FrameIndex * 29) % (NozzleSmokeWidth - 24));
-    FCanvasTileItem FrameMarker(FVector2D(MarkerX, 104.0f), FVector2D(24.0f, 32.0f), FLinearColor(1.0f, 1.0f, 1.0f, 1.0f));
-    FrameMarker.BlendMode = SE_BLEND_Opaque;
-    Canvas.DrawItem(FrameMarker);
-
-    Canvas.Flush_GameThread();
+    ENQUEUE_RENDER_COMMAND(NozzleSmokeUpdateRenderTarget)(
+        [TextureRHI, Pixels](FRHICommandListImmediate& RHICmdList)
+        {
+            const FUpdateTextureRegion2D Region(0, 0, 0, 0, NozzleSmokeWidth, NozzleSmokeHeight);
+            RHICmdList.UpdateTexture2D(TextureRHI, 0, Region, NozzleSmokeWidth * 4, Pixels->GetData());
+        });
+    return true;
 }
 
 class FNozzleSmokePublishLatentCommand final : public IAutomationLatentCommand
@@ -161,6 +184,7 @@ public:
             RenderTarget->RenderTargetFormat = RTF_RGBA8;
             RenderTarget->ClearColor = FLinearColor::Black;
             RenderTarget->bAutoGenerateMips = false;
+            RenderTarget->bForceLinearGamma = true;
             RenderTarget->InitCustomFormat(NozzleSmokeWidth, NozzleSmokeHeight, PF_B8G8R8A8, false);
             RenderTarget->UpdateResourceImmediate(true);
 
@@ -178,7 +202,18 @@ public:
             }
         }
 
-        DrawNozzleSmokePattern(PIEWorld, RenderTarget, PublishedFrames);
+        if(!DrawNozzleSmokePattern(RenderTarget, PublishedFrames))
+        {
+            PatternUploadAttempts += 1;
+            if(PatternUploadAttempts < 30)
+            {
+                return false;
+            }
+            Test->AddError(TEXT("NOZZLE_SMOKE_RESULT failed: unable to enqueue render target pattern upload"));
+            return true;
+        }
+        PatternUploadAttempts = 0;
+        FlushRenderingCommands();
         const bool bQueued = SenderComponent->PublishFrame();
         FlushRenderingCommands();
         const FNozzleRuntimeDiagnostics RenderDiagnostics = SenderComponent->GetLastRenderDiagnostics();
@@ -257,6 +292,7 @@ private:
     FNozzleRuntimeDiagnostics LastDiagnostics;
     int64 LastRenderSequence = 0;
     int32 Attempts = 0;
+    int32 PatternUploadAttempts = 0;
     int32 PublishedFrames = 0;
 };
 

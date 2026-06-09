@@ -13,6 +13,8 @@ struct FNozzleNativeTextureView
     void* NativeTexture = nullptr;
     int32 Width = 0;
     int32 Height = 0;
+    FString TransferMode;
+    FString SynchronizationBoundary;
 };
 
 struct FNozzleNativeDeviceView
@@ -32,6 +34,16 @@ struct FNozzleMetalTextureDiagnostics
     FString Message;
 };
 
+struct FNozzleMetalIntermediateTextureCache
+{
+    void* Texture = nullptr;
+    void* Surface = nullptr;
+    void* CommandQueue = nullptr;
+    int32 Width = 0;
+    int32 Height = 0;
+    uint64 PixelFormat = 0;
+};
+
 class FNozzleNativeBridge final
 {
 public:
@@ -42,6 +54,8 @@ public:
     static FNozzleRuntimeDiagnostics MakeRuntimeDiagnostics();
     static bool CaptureNativeTexture_RenderThread(FTextureRenderTargetResource* RenderTargetResource, FNozzleNativeTextureView& OutView, FNozzleRuntimeDiagnostics& OutDiagnostics);
     static bool CaptureNativeTextureAndDevice_RenderThread(FTextureRenderTargetResource* RenderTargetResource, FNozzleNativeTextureView& OutTextureView, FNozzleNativeDeviceView& OutDeviceView, FNozzleRuntimeDiagnostics& OutDiagnostics);
+    static bool PreparePublishTexture_RenderThread(const FNozzleNativeTextureView& SourceTextureView, const FNozzleNativeDeviceView& DeviceView, FNozzleMetalIntermediateTextureCache& MetalIntermediateCache, FNozzleNativeTextureView& OutPublishTextureView, FNozzleRuntimeDiagnostics& OutDiagnostics);
+    static void ReleaseMetalIntermediateTextureCache_RenderThread(FNozzleMetalIntermediateTextureCache& MetalIntermediateCache);
     static int32 CreateSenderForNativeDevice_RenderThread(const FString& SenderName, const FNozzleNativeDeviceView& DeviceView, NozzleSender*& InOutSender, FNozzleRuntimeDiagnostics& OutDiagnostics);
     static int32 CreateReceiverForBackend(const FString& SenderName, NozzleReceiver*& OutReceiver, FNozzleRuntimeDiagnostics& OutDiagnostics);
     static int32 PublishNativeTexture_RenderThread(NozzleSender* Sender, const FNozzleNativeTextureView& TextureView, FNozzleRuntimeDiagnostics& OutDiagnostics);

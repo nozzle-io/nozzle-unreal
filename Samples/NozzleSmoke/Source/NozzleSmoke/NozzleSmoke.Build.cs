@@ -12,7 +12,8 @@ public class NozzleSmoke : ModuleRules
             "CoreUObject",
             "Engine",
             "Nozzle",
-            "RenderCore"
+            "RenderCore",
+            "RHI"
         });
 
         if(Target.bBuildEditor)
