@@ -163,3 +163,69 @@ row as PASS only when the issue evidence includes:
 If `row_status=MISSING` or the viewer reports failed quadrant semantics, keep the
 runtime matrix row MISSING/FAIL and split the focused bug instead of claiming
 Metal runtime support.
+
+## Packaged receiver/material smoke
+
+The sample also contains a packaged-game receiver/material harness enabled by
+`-NozzleSmokePackagedReceiver`. This path does **not** start an internal Unreal
+sender. It consumes an external nozzle source, copies acquired frames into an
+Unreal render target through the native receiver component, samples that target
+through the cooked `/Game/NozzleSmoke/NozzleSmokeReceiverMaterial` material, and
+then validates both:
+
+- material-output RGB/orientation/moving-marker samples; and
+- direct receiver-target RGBA samples, including the alpha patch.
+
+The cooked material asset is intentionally stored under `Content/NozzleSmoke/`
+and `Config/DefaultGame.ini` explicitly cooks `/Game/NozzleSmoke`. Do not remove
+that cook rule: the packaged receiver uses a string `LoadObject` path, so the
+cooker will not discover the asset from a C++ hard reference.
+
+Run the external `nozzle-viewer` sender first and keep it alive long enough for
+the packaged receiver to observe multiple frames:
+
+```sh
+/path/to/nozzle-viewer \
+  --smoke-sender \
+  --source NozzleViewerSmoke320 \
+  --width 320 \
+  --height 240 \
+  --frames 1200 \
+  --interval-ms 16 \
+  --evidence /tmp/nozzle-unreal-packaged-receiver-viewer-sender-320.json
+```
+
+Package the sample, then run the packaged receiver against that source:
+
+```sh
+'/Users/Shared/Epic Games/UE_5.7/Engine/Build/BatchFiles/RunUAT.sh' \
+  BuildCookRun \
+  -project='/path/to/nozzle-unreal/Samples/NozzleSmoke/NozzleSmoke.uproject' \
+  -noP4 -platform=Mac -clientconfig=Development -build -cook -stage -package
+
+'/path/to/nozzle-unreal/Samples/NozzleSmoke/Binaries/Mac/NozzleSmoke.app/Contents/MacOS/NozzleSmoke' \
+  -NozzleSmokePackagedReceiver \
+  -NozzleSmokeWidth=320 \
+  -NozzleSmokeHeight=240 \
+  -NozzleSmokeSource=NozzleViewerSmoke320 \
+  -NozzleSmokeStrictPass \
+  -stdout -FullStdOutLogOutput
+```
+
+Expected receiver log markers:
+
+```text
+NOZZLE_RECEIVER_SMOKE_CONFIG packaged=1
+NOZZLE_RECEIVER_SMOKE_START packaged=1
+NOZZLE_RECEIVER_SMOKE_RESULT packaged=1 row_status=PASS_CANDIDATE
+NOZZLE_RECEIVER_SMOKE_EXIT packaged=1 success=1
+```
+
+A packaged receiver/material PASS candidate must include the explicit Metal
+`nozzle_frame_to_unreal_metal_texture` transfer path, native receiver target
+details containing `receiver_target=FRHITexture::GetNativeResource`,
+`MTLPixelFormat=81`, `storageMode=`, `usage=`, `iosurface_backed=`, and
+`iosurface_id=`, plus the synchronization boundary text naming
+`nozzle_frame_copy_to_native_texture` and the Metal backend copy wait. Timeout or
+`row_status=MISSING` is always a failure for the packaged receiver/material
+harness, even without `-NozzleSmokeStrictPass`.

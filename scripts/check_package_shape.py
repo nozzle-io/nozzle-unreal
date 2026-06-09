@@ -77,6 +77,8 @@ REQUIRED_FILES = [
     "Nozzle/Resources/README.md",
     "Samples/NozzleSmoke/NozzleSmoke.uproject",
     "Samples/NozzleSmoke/Config/DefaultEngine.ini",
+    "Samples/NozzleSmoke/Config/DefaultGame.ini",
+    "Samples/NozzleSmoke/Content/NozzleSmoke/NozzleSmokeReceiverMaterial.uasset",
     "Samples/NozzleSmoke/Source/NozzleSmoke.Target.cs",
     "Samples/NozzleSmoke/Source/NozzleSmokeEditor.Target.cs",
     "Samples/NozzleSmoke/Source/NozzleSmoke/NozzleSmoke.Build.cs",
@@ -185,7 +187,14 @@ def check_sample_project() -> None:
     if not isinstance(plugins, list) or not any(isinstance(plugin, dict) and plugin.get("Name") == "Nozzle" for plugin in plugins):
         fail("sample .uproject must enable the Nozzle plugin")
     require_text(ROOT / "Samples" / "NozzleSmoke" / "Config" / "DefaultEngine.ini", "DefaultGraphicsRHI_DX11")
+    require_text(ROOT / "Samples" / "NozzleSmoke" / "Config" / "DefaultGame.ini", 'DirectoriesToAlwaysCook=(Path="/Game/NozzleSmoke")')
+    require_file(ROOT / "Samples" / "NozzleSmoke" / "Content" / "NozzleSmoke" / "NozzleSmokeReceiverMaterial.uasset")
+    require_text(ROOT / "Samples" / "NozzleSmoke" / "Source" / "NozzleSmoke" / "NozzleSmoke.cpp", "/Game/NozzleSmoke/NozzleSmokeReceiverMaterial.NozzleSmokeReceiverMaterial")
+    require_text(ROOT / "Samples" / "NozzleSmoke" / "Source" / "NozzleSmoke" / "NozzleSmoke.cpp", "NozzleSmokePackagedReceiver")
+    require_text(ROOT / "Samples" / "NozzleSmoke" / "Source" / "NozzleSmoke" / "NozzleSmoke.cpp", "nozzle_frame_copy_to_native_texture")
     require_text(ROOT / "Samples" / "NozzleSmoke" / "README.md", "not runtime evidence")
+    require_text(ROOT / "Samples" / "NozzleSmoke" / "README.md", "-NozzleSmokePackagedReceiver")
+    require_text(ROOT / "Samples" / "NozzleSmoke" / "README.md", "NOZZLE_RECEIVER_SMOKE_RESULT packaged=1 row_status=PASS_CANDIDATE")
 
 
 
