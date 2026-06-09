@@ -43,10 +43,11 @@ evidence.
   - `storageMode`.
   - `usage` flags where observable.
   - whether the texture pointer came directly from `FRHITexture::GetNativeResource()` or from an intermediate texture.
-- IOSurface backing proof for the source or target texture where required. A PASS row must state exactly one of:
-  - the Unreal source/target `id<MTLTexture>` itself is IOSurface-backed, with non-null IOSurface proof and an IOSurface ID;
-  - the plugin copies through a named IOSurface-backed intermediate texture, with the transfer mode documented;
-  - the row remains MISSING/FAIL because the tested texture is not cross-process shareable.
+- Texture sharing/backing outcome for the source or target texture where required. Every attempted row must state exactly one of:
+  - PASS: the Unreal source/target `id<MTLTexture>` itself is IOSurface-backed, with non-null IOSurface proof and an IOSurface ID;
+  - PASS: the plugin copies through a named IOSurface-backed intermediate texture, with the transfer mode documented;
+  - PASS: receiver-side rows copy an acquired nozzle frame through an explicitly named Metal frame-to-target path into the Unreal target texture, while recording whether that target itself is IOSurface-backed;
+  - MISSING/FAIL: the tested texture is not cross-process shareable and no explicit copy path was proven.
 - Synchronization boundary. A PASS row must name the actual ordering mechanism:
   - command buffer completion handler or wait;
   - fence or shared event;
