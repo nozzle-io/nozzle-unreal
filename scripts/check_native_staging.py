@@ -64,6 +64,7 @@ WIN64_SYSTEM_DLL_PATTERNS = (
     "crypt32.dll",
     "d3d11.dll",
     "dxgi.dll",
+    "opengl32.dll",
     "dbghelp.dll",
     "iphlpapi.dll",
     "msvcp*.dll",

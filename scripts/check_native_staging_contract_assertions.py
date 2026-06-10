@@ -182,16 +182,38 @@ File Type: DLL
 
   Image has the following dependencies:
 
-    KERNEL32.dll
     d3d11.dll
-    dxgi.dll
+    bcrypt.dll
+    OPENGL32.dll
+    KERNEL32.dll
+    MSVCP140.dll
     VCRUNTIME140.dll
+    VCRUNTIME140_1.dll
+    api-ms-win-crt-runtime-l1-1-0.dll
+    api-ms-win-crt-stdio-l1-1-0.dll
+    api-ms-win-crt-string-l1-1-0.dll
+    api-ms-win-crt-time-l1-1-0.dll
+    api-ms-win-crt-heap-l1-1-0.dll
     helper.dll
 
   Summary
 """
         dependencies = staging.parse_win64_dumpbin_output(output)
-        expected_dependencies = ["KERNEL32.dll", "d3d11.dll", "dxgi.dll", "VCRUNTIME140.dll", "helper.dll"]
+        expected_dependencies = [
+            "d3d11.dll",
+            "bcrypt.dll",
+            "OPENGL32.dll",
+            "KERNEL32.dll",
+            "MSVCP140.dll",
+            "VCRUNTIME140.dll",
+            "VCRUNTIME140_1.dll",
+            "api-ms-win-crt-runtime-l1-1-0.dll",
+            "api-ms-win-crt-stdio-l1-1-0.dll",
+            "api-ms-win-crt-string-l1-1-0.dll",
+            "api-ms-win-crt-time-l1-1-0.dll",
+            "api-ms-win-crt-heap-l1-1-0.dll",
+            "helper.dll",
+        ]
         if dependencies != expected_dependencies:
             fail(f"unexpected Win64 dependency parse result: {dependencies}")
         errors = staging.validate_win64_dependencies(contract, dependencies)
